@@ -2181,8 +2181,10 @@ function renderDash(){
   function buildSlotCard(s){
     var emp=Object.values(EMP).find(function(x){return x.name===s.name;});
     var lv=emp?emp.lvl:"?";
-    var bg=lv==="N4"?"bg-green":lv==="ALT"?"bg-gold":lv==="RH"?"bg-orange":"bg-blue";
-    return "<div class='si'><div class='stime'>"+s.start+"-"+s.end+"</div>"
+    var isAbsent = s.poste && (s.poste.indexOf("Absent")>=0 || s.poste.indexOf("Retard")>=0);
+    var bg=isAbsent?"bg-red":lv==="N4"?"bg-green":lv==="ALT"?"bg-gold":lv==="RH"?"bg-orange":"bg-blue";
+    var absentBadge = isAbsent ? "<span style='font-size:10px;opacity:.9'>"+s.poste+"</span>" : "";
+    return "<div class='si' style='"+(isAbsent?"opacity:.7;border-left:3px solid #e53935":"")+"'><div class='stime'>"+s.start+"-"+s.end+"</div>"
       +"<div style='flex:1'><div class='sname'>"+s.name+"</div>"
       +"<div class='srole'>"+s.poste+"</div></div>"
       +"<span class='badge "+bg+"'>"+lv+"</span></div>";
