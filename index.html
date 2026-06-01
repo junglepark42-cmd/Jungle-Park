@@ -543,53 +543,43 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
 
 <div class="mo" id="mExports" onclick="if(event.target===this)closeModal('mExports')"><div class="ms" style="max-height:94vh">
   <div class="mh"></div>
-  <div class="mtitle">&#x1F4E4; Exports mensuels</div>
+  <div class="mtitle">📤 Exports mensuels</div>
   <div class="fg2">
-    <div class="fr"><label>Mois</label><select id="expMonth">
-      <option value="0">Janvier</option><option value="1">Fevrier</option>
-      <option value="2">Mars</option><option value="3">Avril</option>
-      <option value="4">Mai</option><option value="5">Juin</option>
-      <option value="6">Juillet</option><option value="7">Aout</option>
-      <option value="8">Septembre</option><option value="9">Octobre</option>
-      <option value="10">Novembre</option><option value="11">Decembre</option>
+    <div class="fr"><label>Mois</label><select id="expMois">
+      <option value="1">Janvier</option><option value="2">Février</option>
+      <option value="3">Mars</option><option value="4">Avril</option>
+      <option value="5">Mai</option><option value="6">Juin</option>
+      <option value="7">Juillet</option><option value="8">Août</option>
+      <option value="9">Septembre</option><option value="10">Octobre</option>
+      <option value="11">Novembre</option><option value="12">Décembre</option>
     </select></div>
-    <div class="fr"><label>Ann&eacute;e</label><select id="expYear"></select></div>
+    <div class="fr"><label>Année</label><select id="expYear"></select></div>
   </div>
-  <div style="margin-bottom:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--g1);margin-bottom:10px">&#x1F9FA; Cuisine / HACCP</div>
-    <div style="display:flex;gap:8px">
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="exportCSV('cuisine')">CSV</button>
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px;background:var(--blue)" onclick="exportPDF('cuisine')">PDF</button>
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:var(--g1);margin-bottom:8px">🧺 Cuisine / HACCP</div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px" onclick="exportCSV('cuisine')">CSV</button>
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px;background:var(--blue)" onclick="exportPDF('cuisine')">PDF synthèse</button>
     </div>
+    <button class="vbtn" style="width:100%;margin:0;padding:9px;font-size:12px;background:#1b5e20" onclick="var m=parseInt(document.getElementById('expMois').value),y=parseInt(document.getElementById('expYear').value);closeModal('mExports');buildPDF_Inspection(y,m)">🔍 PDF Inspection HACCP (températures + livraisons + incidents)</button>
   </div>
-  <div style="margin-bottom:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--g1);margin-bottom:10px">&#x1F465; RH</div>
-    <div style="display:flex;gap:8px">
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="exportCSV('rh')">CSV</button>
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px;background:var(--blue)" onclick="exportPDF('rh')">PDF</button>
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:var(--g1);margin-bottom:8px">🏗️ Structures</div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px" onclick="exportCSV('structures')">CSV</button>
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px;background:var(--blue)" onclick="exportPDF('structures')">PDF synthèse</button>
     </div>
+    <button class="vbtn" style="width:100%;margin:0;padding:9px;font-size:12px;background:#1b5e20" onclick="var m=parseInt(document.getElementById('expMois').value),y=parseInt(document.getElementById('expYear').value);closeModal('mExports');buildPDF_StructuresInspection(y,m)">🔍 PDF Inspection Structures (contrôles + incidents)</button>
   </div>
-  <div style="margin-bottom:14px">
-    <div style="font-size:13px;font-weight:800;color:var(--g1);margin-bottom:10px">&#x1F3D7; Structures</div>
-    <div style="display:flex;gap:8px">
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="exportCSV('structures')">CSV</button>
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px;background:var(--blue)" onclick="exportPDF('structures')">PDF</button>
+  <div style="margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:var(--g1);margin-bottom:8px">👥 RH</div>
+    <div style="display:flex;gap:8px;margin-bottom:6px">
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px" onclick="exportCSV('rh')">CSV basique</button>
+      <button class="vbtn" style="flex:1;margin:0;padding:9px;font-size:12px;background:var(--blue)" onclick="exportPDF('rh')">PDF basique</button>
     </div>
-    <button class="vbtn" style="width:100%;margin:4px 0 0;padding:8px;font-size:11px;background:#1b5e20" onclick="var sy=document.getElementById('expYear'),sm=document.getElementById('expMois');closeModal('mExports');buildPDF_StructuresInspection(parseInt(sy.value),parseInt(sm.value))">🔍 PDF Inspection Structures</button>
+    <button class="vbtn" style="width:100%;margin:0;padding:9px;font-size:12px;background:#1b5e20" onclick="closeModal('mExports');openExportRH()">📋 Export RH complet (heures + NSS + signature)</button>
   </div>
-  <div style="margin:10px 0;padding:12px;background:#e8f5e9;border-radius:10px">
-    <div style="font-size:12px;font-weight:800;color:var(--g1);margin-bottom:6px">🔍 Rapport HACCP Inspection</div>
-    <div style="font-size:11px;color:var(--tl);margin-bottom:8px">Températures jour par jour, livraisons, contrôles périodiques, incidents</div>
-    <button class="vbtn" style="width:100%;margin:0" onclick="var s=document.getElementById('expMois'),y=document.getElementById('expYear');closeModal('mExports');buildPDF_Inspection(parseInt(y.value),parseInt(s.value))">📄 PDF Inspection</button>
-  </div>
-  <div style="font-size:11px;color:var(--tl);text-align:center;margin-bottom:10px">CSV = copier-coller vers Google Sheets &bull; PDF = ouverture dans le navigateur</div>
-  <div style="margin:10px 0;padding:12px;background:#e8f5e9;border-radius:10px">
-    <div style="font-size:12px;font-weight:800;color:var(--g1);margin-bottom:8px">📋 Export RH complet (nouveau)</div>
-    <div style="font-size:11px;color:var(--tl);margin-bottom:8px">Détail journalier, NSS, prime précarité, case signature</div>
-    <div style="display:flex;gap:8px">
-      <button class="vbtn" style="flex:1;margin:0;padding:10px;font-size:13px" onclick="closeModal('mExports');openExportRH()">📄 PDF + CSV</button>
-    </div>
-  </div>
+  <div style="font-size:10px;color:var(--tl);text-align:center;margin-bottom:10px">CSV = Google Sheets · PDF synthèse = résumé · PDF Inspection = rapport détaillé pour contrôle</div>
   <button class="cnclbtn" onclick="closeModal('mExports')">Fermer</button>
 </div></div>
 <div class="mo" id="mEditTask" onclick="if(event.target===this)closeModal('mEditTask')"><div class="ms">
@@ -4297,9 +4287,9 @@ function deleteStructConfirmed(id){
 
 // ── EXPORTS ────────────────────────────────────────────────────────────────────
 function openExports(){
-  var sel=document.getElementById("expMonth");
+  var mSel=document.getElementById("expMois");
   var yrSel=document.getElementById("expYear");
-  if(sel) sel.value=new Date().getMonth();
+  if(mSel) mSel.value=new Date().getMonth()+1;
   if(yrSel){
     yrSel.innerHTML="";
     var yr=new Date().getFullYear();
@@ -4313,7 +4303,7 @@ function openExports(){
 }
 
 function getExpPeriod(){
-  var m=parseInt(document.getElementById("expMonth").value);
+  var m=parseInt(document.getElementById("expMois").value)-1; // now 1-12, convert to 0-11
   var y=parseInt(document.getElementById("expYear").value);
   return {month:m,year:y,label:MNAMES[m]+" "+y,
     from:y+"-"+(m+1).toString().padStart(2,"0")+"-01",
