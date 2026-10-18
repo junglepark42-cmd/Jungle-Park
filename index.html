@@ -1595,7 +1595,11 @@ async function loadAllData() {
     }
 
     // Conges
-    var cgs = await supaGet("conges", "order=date_from.asc");
+    var planningContextPromise = Promise.all([
+      supaGet("conges", "order=date_from.asc"),
+      supaGet("indisponibilites", "order=date.asc")
+    ]);
+    var cgs = (await planningContextPromise)[0];
     if (cgs) {
       CGL = cgs.map(function(c) {
         return {id:c.id, empId:c.emp_id, from:c.date_from, to:c.date_to,
@@ -1604,7 +1608,7 @@ async function loadAllData() {
     }
 
     // Indisponibilites
-    var inds = await supaGet("indisponibilites", "order=date.asc");
+    var inds = (await planningContextPromise)[1];
     if (inds) {
       INDISPO = inds.map(function(i) {
         return {id:i.id, empId:i.emp_id, date:i.date,
@@ -1760,20 +1764,7 @@ async function loadAllData() {
       });
     }
 
-    // Controles periodiques - charger depuis Supabase si disponibles
-    var ctrls2 = await supaGet("controles_periodiques",
-      "order=prochain_controle.asc&limit=200");
-    if(ctrls2 && ctrls2.length){
-      ctrls2.forEach(function(c){
-        var existing=CTRLS.find(function(x){return x.id===c.id;});
-        if(existing){
-          existing.dernier=c.dernier_controle||existing.dernier;
-          existing.prochain=c.prochain_controle||existing.prochain;
-          existing.statut=c.statut||existing.statut;
-          existing.note=c.note||existing.note;
-        }
-      });
-    }
+    // Les controles periodiques ont deja ete charges plus haut.
 
     DB_LOADED = true;
     // Courses et fournisseurs : chargement a la demande, pas au demarrage.
