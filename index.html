@@ -3317,7 +3317,9 @@ function ensureStructHistory(){
     try{
       var strCtrl=await supaGet("structures_ctrl","order=date.desc&limit=10000");
       if(strCtrl===null){showToast("Impossible de charger l'historique des structures");return false;}
-      STRUCTS.forEach(function(s){s.histo=[];s.lastDate="";s.lastAgent="";});
+      // Conserver les saisies locales en cours et eviter de perdre un controle recent.
+      var localEntries=new Map();
+      STRUCTS.forEach(function(s){localEntries.set(s.id,(s.histo||[]).slice());});
     if(strCtrl && strCtrl.length){
       strCtrl.forEach(function(h){
         var s = STRUCTS.find(function(x){ return x.id === h.struct_id; });
@@ -3339,6 +3341,14 @@ function ensureStructHistory(){
     }
 
 
+      // Reintegrer les controles saisis pendant la requete, sans doublonner ceux du serveur.
+      STRUCTS.forEach(function(s){
+        var entries=localEntries.get(s.id)||[];
+        entries.forEach(function(h){
+          var exists=(s.histo||[]).some(function(x){return x.date===h.date&&x.heure===h.heure&&x.agent===h.agent&&x.ctrl_type===h.ctrl_type;});
+          if(!exists){s.histo.unshift(h);if(!s.lastDate||h.date>=s.lastDate){s.lastDate=h.date;s.lastAgent=h.agent||"";s.statut=h.statut||s.statut;}}
+        });
+      });
       STRUCT_HISTORY_LOADED=true;
       return true;
     }catch(e){console.error("Historique structures",e);showToast("Erreur de chargement des structures");return false;}
