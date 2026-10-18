@@ -4154,7 +4154,7 @@ var CURRENT_LIV_TAB = "today";
 
 // Chargement differe des historiques non essentiels au demarrage.
 var LIVRAISONS_HISTORY_LOADED=false, INCIDENTS_HISTORY_LOADED=false;
-async async function loadLivraisonsHistory(){
+async function loadLivraisonsHistory(){
   if(LIVRAISONS_HISTORY_LOADED)return true;
   try{
     var livs = await supaGet("livraisons", "order=date.desc&limit=50000");
