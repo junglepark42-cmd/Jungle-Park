@@ -1652,35 +1652,11 @@ async function loadAllData() {
       });
     }
 
-    // Livraisons
-    var livs = await supaGet("livraisons", "order=date.desc&limit=50000");
-    if (livs) {
-      LIVRAISONS = livs.map(function(l) {
-        return {id:l.id, fourn:l.fournisseur, date:l.date, heure:l.heure||"",
-          agent:l.agent||"", bl:l.bl||"", types:l.types||{},
-          tempFrais:l.temp_frais, tempSurgele:l.temp_surgele,
-          statut:l.statut||"ok", anomalie:l.anomalie||"",
-          action:l.action||"", produits:l.produits||"", note:l.note||"",
-          savedAt:l.created_at||""};
-      });
-    }
-
     // Locations clients
     var locs = await supaGet("locations_clients", "order=date_location.desc&limit=5000");
     if(locs) LOCATIONS = locs.map(function(l){ return {id:l.id,client:l.client_nom||"",tel:l.telephone||"",email:l.email||"",adresse:l.adresse||"",date:l.date_location||"",heureInstall:l.heure_installation||"",heureRecup:l.heure_recuperation||"",responsable:l.responsable||"",statut:l.statut||"preparer",structures:l.structures||[],consignes:l.consignes||"",observations:l.observations||"",montant:l.montant||"",acompte:l.acompte||"",recuperation:l.recuperation||null,createdAt:l.created_at||""}; });
     var bons = await supaGet("locations_bons", "order=created_at.desc&limit=5000");
     LOCATION_BONS = bons||[];
-
-    // Incidents
-    var incs = await supaGet("incidents", "order=date.desc&limit=50000");
-    if (incs) {
-      INCIDENTS = incs.map(function(i) {
-        return {id:i.id, type:i.type, date:i.date, heure:i.heure||"",
-          agent:i.agent||"", description:i.description||"",
-          action:i.action||"", statut:i.statut||"ouvert",
-          suivi:i.suivi||[], createdAt:i.created_at||""};
-      });
-    }
 
     // Controles periodiques
     var ctrls = await supaGet("controles_periodiques", "order=prochain_controle.asc");
@@ -4128,8 +4104,51 @@ var LIV_TYPES_SEL = {sec:false,frais:false,surgele:false,autre:false};
 var EDIT_LIV_ID = null;
 var CURRENT_LIV_TAB = "today";
 
+// Chargement differe des historiques non essentiels au demarrage.
+var LIVRAISONS_HISTORY_LOADED=false, INCIDENTS_HISTORY_LOADED=false;
+async function loadLivraisonsHistory(){
+  if(LIVRAISONS_HISTORY_LOADED)return true;
+  try{
+    var livs = await supaGet("livraisons", "order=date.desc&limit=50000");
+    if (livs) {
+      LIVRAISONS = livs.map(function(l) {
+        return {id:l.id, fourn:l.fournisseur, date:l.date, heure:l.heure||"",
+          agent:l.agent||"", bl:l.bl||"", types:l.types||{},
+          tempFrais:l.temp_frais, tempSurgele:l.temp_surgele,
+          statut:l.statut||"ok", anomalie:l.anomalie||"",
+          action:l.action||"", produits:l.produits||"", note:l.note||"",
+          savedAt:l.created_at||""};
+      });
+    }
+
+
+    if(livs===null){showToast("Impossible de charger les livraisons");return false;}
+    LIVRAISONS_HISTORY_LOADED=true;
+    return true;
+  }catch(e){console.error("Livraisons",e);showToast("Erreur de chargement des livraisons");return false;}
+}
+async function loadIncidentsHistory(){
+  if(INCIDENTS_HISTORY_LOADED)return true;
+  try{
+    var incs = await supaGet("incidents", "order=date.desc&limit=50000");
+    if (incs) {
+      INCIDENTS = incs.map(function(i) {
+        return {id:i.id, type:i.type, date:i.date, heure:i.heure||"",
+          agent:i.agent||"", description:i.description||"",
+          action:i.action||"", statut:i.statut||"ouvert",
+          suivi:i.suivi||[], createdAt:i.created_at||""};
+      });
+    }
+
+
+    if(incs===null){showToast("Impossible de charger les incidents");return false;}
+    INCIDENTS_HISTORY_LOADED=true;
+    return true;
+  }catch(e){console.error("Incidents",e);showToast("Erreur de chargement des incidents");return false;}
+}
 function openLivraisons(){
   openModal("mLivraisons");
+  loadLivraisonsHistory().then(function(ok){if(ok)renderLivraisons(CURRENT_LIV_TAB);});
   setTimeout(function(){
     switchLivTab(CURRENT_LIV_TAB, document.querySelector("#livTabs .ctab.active")||document.querySelector("#livTabs .ctab"));
   }, 50);
@@ -8528,7 +8547,7 @@ function switchControleTab(tab, btn){
   if(h) h.style.display = tab==="haccp"    ?"block":"none";
   if(p) p.style.display = tab==="periodik" ?"block":"none";
   if(i) i.style.display = tab==="incidents"?"block":"none";
-  if(tab==="incidents")   renderIncidents();
+  if(tab==="incidents") loadIncidentsHistory().then(function(ok){if(ok)renderIncidents();});
   else if(tab==="periodik") renderPeriodik2();
   else renderControles();
 }
