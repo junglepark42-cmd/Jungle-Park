@@ -1776,15 +1776,7 @@ async function loadAllData() {
     }
 
     DB_LOADED = true;
-    // Load courses
-    await loadCourses();
-
-    // Load fournisseurs
-    var fourns = await supaGet("fournisseurs","order=nom.asc&limit=200");
-    if(fourns && fourns.length){
-      FOURNISSEURS = fourns.map(function(f){ return f.nom; });
-      updateFournDatalist();
-    }
+    // Courses et fournisseurs : chargement a la demande, pas au demarrage.
 
     // Load planning from Supabase
     var wDates=[];
@@ -5885,8 +5877,8 @@ var COURSE_DRAG_ID = null;
 
 async function loadCourses(){
   var rows = await supaGet("courses", "order=cat.asc,nom.asc&limit=500");
-  if(rows && rows.length){
-    // Supabase is the single source of truth
+  if(rows !== null){
+    // Une liste vide est un resultat valide; une erreur ne doit pas effacer le cache.
     COURSES = rows.map(function(r){
       return {id:r.id, nom:r.nom, cat:r.cat||"Autre", qte:r.qte||"", urgent:r.urgent||false, done:r.done||false};
     });
@@ -5926,11 +5918,19 @@ async function deleteCourseDB(id){
   await supaDelete("courses","id=eq."+id);
 }
 
+async function loadFournisseursOnDemand(){
+  var fourns=await supaGet("fournisseurs","order=nom.asc&limit=200");
+  if(fourns!==null){
+    FOURNISSEURS=fourns.map(function(f){return f.nom;});
+    updateFournDatalist();
+  }
+}
 function openCourses(){
   openModal("mCourses");
   var searchInput=document.getElementById("coursesSearchInput");
   if(searchInput) searchInput.value=COURSES_Q;
   loadCourses().then(function(){ renderCourses(); });
+  loadFournisseursOnDemand();
 }
 
 function updateCoursesSearch(q){
