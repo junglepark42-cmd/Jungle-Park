@@ -1692,27 +1692,7 @@ async function loadAllData() {
       });
     }
 
-    // Historique controles structures
-    var strCtrl = await supaGet("structures_ctrl", "order=date.desc&limit=10000");
-    if(strCtrl && strCtrl.length){
-      strCtrl.forEach(function(h){
-        var s = STRUCTS.find(function(x){ return x.id === h.struct_id; });
-        if(!s) return;
-        if(!s.histo) s.histo = [];
-        s.histo.push({
-          date: h.date, heure: h.heure||"", agent: h.agent||"",
-          statut: h.statut||"ok", desc: h.description||"",
-          rep: h.reparation||"", repNote: h.rep_note||"",
-          ctrl_type: h.ctrl_type||"quotidien"
-        });
-        // Update lastDate/lastAgent from most recent
-        if(!s.lastDate || h.date >= s.lastDate){
-          s.lastDate = h.date; s.lastAgent = h.agent||"";
-          s.statut = h.statut||"ok";
-          s.desc = h.description||""; s.rep = h.reparation||""; s.repNote = h.rep_note||"";
-        }
-      });
-    }
+    // Historique structures charge a l'ouverture du module.
 
     // Taches recurrentes - derniere execution
     var trLogs = await supaGet("taches_recurrentes_log",
@@ -3305,6 +3285,7 @@ function openCtrlStructures(){
   }).join("");
   // Open modal FIRST so DOM elements are accessible
   openModal("mStructures");
+  ensureStructHistory().then(function(ok){if(ok&&document.getElementById("mStructures").style.display!=="none")renderStructList(CURRENT_STRUCT_TAB);});
   // THEN render content (tabs are now in DOM)
   setTimeout(function(){
     var mb = document.getElementById("structMgrBtn");
@@ -3327,8 +3308,47 @@ function openCtrlStructures(){
   }, 50);
 }
 
+// Historique des structures : lecture unique par session, sans ecraser les donnees locales sur erreur.
+var STRUCT_HISTORY_LOADED=false, STRUCT_HISTORY_PENDING=null;
+function ensureStructHistory(){
+  if(STRUCT_HISTORY_LOADED)return Promise.resolve(true);
+  if(STRUCT_HISTORY_PENDING)return STRUCT_HISTORY_PENDING;
+  STRUCT_HISTORY_PENDING=(async function(){
+    try{
+      var strCtrl=await supaGet("structures_ctrl","order=date.desc&limit=10000");
+      if(strCtrl===null){showToast("Impossible de charger l'historique des structures");return false;}
+      STRUCTS.forEach(function(s){s.histo=[];s.lastDate="";s.lastAgent="";});
+    if(strCtrl && strCtrl.length){
+      strCtrl.forEach(function(h){
+        var s = STRUCTS.find(function(x){ return x.id === h.struct_id; });
+        if(!s) return;
+        if(!s.histo) s.histo = [];
+        s.histo.push({
+          date: h.date, heure: h.heure||"", agent: h.agent||"",
+          statut: h.statut||"ok", desc: h.description||"",
+          rep: h.reparation||"", repNote: h.rep_note||"",
+          ctrl_type: h.ctrl_type||"quotidien"
+        });
+        // Update lastDate/lastAgent from most recent
+        if(!s.lastDate || h.date >= s.lastDate){
+          s.lastDate = h.date; s.lastAgent = h.agent||"";
+          s.statut = h.statut||"ok";
+          s.desc = h.description||""; s.rep = h.reparation||""; s.repNote = h.rep_note||"";
+        }
+      });
+    }
+
+
+      STRUCT_HISTORY_LOADED=true;
+      return true;
+    }catch(e){console.error("Historique structures",e);showToast("Erreur de chargement des structures");return false;}
+    finally{STRUCT_HISTORY_PENDING=null;}
+  })();
+  return STRUCT_HISTORY_PENDING;
+}
 function switchStructTab(tab, btn){
   CURRENT_STRUCT_TAB = tab;
+  ensureStructHistory().then(function(ok){if(ok)renderStructList(CURRENT_STRUCT_TAB);});
   structUpdateDateNav();
   renderStructList(tab);
   document.querySelectorAll("#structTypeTabs .ctab").forEach(function(t){ t.classList.remove("active"); });
