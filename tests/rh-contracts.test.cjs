@@ -1,0 +1,10 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {rhCalculate:calc,rhWeeks}=require('../rh-contracts.js');
+const c={start_date:'2026-10-01',end_date:'2027-04-30',base_hours:600,extra_pct:25,monthly_targets:{2026:{10:100,11:100,12:100},2027:{1:100,2:100,3:50,4:50}}};
+const shift=(date,h,actual)=>({date,heure_debut:'00:00',heure_fin:h,actual:actual==null?null:{minutes:actual},deployed:true});
+test('season includes both years and all partial weeks',()=>{assert.equal(rhWeeks(c)[0],'2026-09-28');assert.equal(rhWeeks(c).at(-1),'2027-04-26');});
+test('actual replaces planned; old unvalidated stays provisional',()=>{const s=calc(c,[shift('2026-10-03','08:00',420),shift('2026-10-04','08:00'),shift('2027-02-01','08:00')],[],'2026-11-02');assert.equal(s.actual,420);assert.equal(s.past,480);assert.equal(s.future,480);assert.equal(s.total,1380);assert.equal(s.pending,1);assert.ok(Math.abs(s.expected-6400)<0.000001);});
+test('750 hours exactly reaches cap; 751 exceeds by one',()=>{assert.equal(calc(c,[shift('2026-10-01','00:00',750*60)],[],'2026-11-02').margin,0);assert.equal(calc(c,[shift('2026-10-01','00:00',751*60)],[],'2026-11-02').margin,-60);});
+test('coverage distinguishes blank planning from confirmed rests',()=>{assert.equal(calc(c,[],[],'2026-11-02').missing.length,rhWeeks(c).length);assert.equal(calc(c,[],rhWeeks(c),'2026-11-02').missing.length,0);});
+test('no January reset',()=>{const s=calc(c,[shift('2026-10-01','05:00'),shift('2027-01-01','06:00')],[],'2027-01-02');assert.equal(s.total,660);});
+test('unknown monthly targets remain unknown, zero is known',()=>{const no={...c,monthly_targets:{}};assert.equal(calc(no,[],[],'2026-11-02').expected,null);assert.equal(calc({...no,monthly_targets:{2026:{10:0}}},[],[],'2026-10-31').expected,0);});
+test('absent shifts do not become work hours',()=>{assert.equal(calc(c,[{...shift('2026-10-01','08:00'),poste:'Absent'}],[],'2026-11-02').total,0);});

@@ -445,7 +445,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
           <div class="stitle" style="margin:0">Equipe</div>
           <button class="btn-add" onclick="openModal('mAddEmp')">+ Ajouter</button>
         </div>
-        <div id="empListEl"></div>
+        <div class="fr"><label>Afficher les personnes</label><select onchange="RH.filter=this.value;renderEmpList()"><option value="active">Actifs</option><option value="archived">Anciens / archivés</option><option value="future">À venir</option><option value="all">Tous</option></select></div><div id="empListEl"></div>
         <div class="stitle" style="margin-top:18px">Legende competences</div>
         <div class="card">
           <div class="irow"><div class="ilbl">VU</div><div class="ival">T&acirc;che montr&eacute;e (N1)</div></div>
@@ -464,7 +464,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
           <button class="ctab" id="etab-comp" onclick="empTab('comp',this)">Competences</button>
           <button class="ctab" id="etab-edit" onclick="empTab('edit',this)">Modifier</button>
         </div>
-        <div id="epInfos"></div>
+        <div id="epContracts"></div><div id="epInfos"></div>
         <div id="epHeures" class="hidden"></div>
         <div id="epEcole" class="hidden"></div>
         <div id="epFormation" class="hidden"></div>
@@ -817,8 +817,8 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
 
 <div class="mo" id="mShift" onclick="if(event.target===this)closeModal('mShift')"><div class="ms">
   <div class="mh"></div><div class="mtitle" id="shiftMTitle">Cr&eacute;neau</div>
-  <div class="fr"><label>Date</label><input type="date" id="shiftDate" onchange="buildSS(document.getElementById('shiftEmp').value,this.value)"></div>
-  <div class="fr"><label>Employ&eacute;(e)</label><select id="shiftEmp"></select></div>
+  <div class="fr"><label>Date</label><input type="date" id="shiftDate" onchange="buildSS(document.getElementById('shiftEmp').value,this.value);rhShiftPreview()"></div>
+  <div id="rhShiftPreview" style="padding:10px;background:#e8f5e9;border-radius:10px;font-size:12px"></div><div class="fr"><label>Employ&eacute;(e)</label><select id="shiftEmp" onchange="rhShiftPreview()"></select></div>
   <div class="fg2">
     <div class="fr"><label>D&eacute;but</label><input type="time" id="shiftStart" value="09:00"></div>
     <div class="fr"><label>Fin</label><input type="time" id="shiftEnd" value="18:00"></div>
@@ -839,7 +839,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
 </div></div>
 <div class="mo" id="mConge" onclick="if(event.target===this)closeModal('mConge')"><div class="ms">
   <div class="mh"></div><div class="mtitle">Poser des conges</div>
-  <div class="fr"><label>Employ&eacute;(e)</label><select id="cgEmp"></select></div>
+  <div id="rhShiftPreview" style="padding:10px;background:#e8f5e9;border-radius:10px;font-size:12px"></div><div class="fr"><label>Employ&eacute;(e)</label><select id="cgEmp"></select></div>
   <div class="fg2">
     <div class="fr"><label>Du</label><input type="date" id="cgFrom"></div>
     <div class="fr"><label>Au</label><input type="date" id="cgTo"></div>
@@ -2149,7 +2149,7 @@ function buildLS(){
   var list=Object.entries(EMP).filter(function(e){return SR==="gerant"?e[1].mgr:!e[1].mgr;});
   sel.innerHTML=list.map(function(e){return "<option value=\""+e[0]+"\">"+e[1].name+" ("+e[1].lvl+")</option>";}).join("");
 }
-function doLogin(){
+async function doLogin(){
   var id=document.getElementById("loginName").value;
   var pin=document.getElementById("loginPin")?document.getElementById("loginPin").value:"";
   var emp=EMP[id];
@@ -2158,7 +2158,9 @@ function doLogin(){
     showLoginError("PIN incorrect");
     return;
   }
-  CU={id:id,name:emp?emp.name:id,role:(emp&&emp.mgr)?"gerant":SR};
+  if(!emp){showLoginError("Salarié introuvable");return;}
+  CU={id:id,name:emp.name,role:emp.mgr?"gerant":"employe"};
+  try{await rhLogin(id,pin);}catch(err){CU=null;showLoginError(err.message);return;}
   document.getElementById("loginScreen").style.display="none";
   document.getElementById("app").style.display="flex";
   document.getElementById("fab").style.display="flex";
@@ -2190,6 +2192,7 @@ function showLoginError(msg){
   setTimeout(function(){el.textContent="";},3000);
 }
 function doLogout(){
+  rhLogout();
   document.getElementById("loginScreen").style.display="flex";
   document.getElementById("app").style.display="none";
   document.getElementById("fab").style.display="none";
@@ -2531,12 +2534,14 @@ async function changeWeek(d){
   initDayTabs();
 }
 function isEmpActiveOnDate(e,dateStr){
+  var contractActive=rhActive(e,dateStr);if(contractActive!==null)return contractActive;
   if(!e||!dateStr) return true;
   if(e.since&&dateStr<e.since) return false;
   if(e.contractEnd&&dateStr>e.contractEnd) return false;
   return true;
 }
 function isEmpActiveDuringRange(e,fromStr,toStr){
+  var eid=Object.keys(EMP).find(function(k){return EMP[k]===e;});var confirmed=RH.contracts.filter(function(c){return c.emp_id===eid&&c.confirmed;});if(confirmed.length && toStr>=confirmed.map(function(c){return c.start_date;}).sort()[0])return confirmed.some(function(c){return c.start_date<=toStr&&(!c.end_date||c.end_date>=fromStr);});
   if(!e) return false;
   if(e.since&&e.since>toStr) return false;
   if(e.contractEnd&&e.contractEnd<fromStr) return false;
@@ -2547,6 +2552,7 @@ function getDisplayedWeekDayIndex(dateStr){
   return -1;
 }
 function renderCurrentPlanningView(){
+  var planning=document.getElementById("planningContent");if(planning&&!document.getElementById("rhPlanningCounters")){var box=document.createElement("div");box.id="rhPlanningCounters";box.style.cssText="display:flex;gap:8px;overflow:auto;margin-bottom:12px";planning.parentNode.insertBefore(box,planning);}rhPlanningCounters();
   if(PLANNING_VIEW==="mois") renderPlanningMonth();
   else if(PLANNING_VIEW==="semaine") renderPlanningWeek();
   else renderPlanning();
@@ -2608,47 +2614,23 @@ async function deleteCurrentShift(){
   ESIDX=null; ESHIFT_ORIG_DAY=null;
 }
 async function saveShift(){
-  var name=document.getElementById("shiftEmp").value;
-  var start=document.getElementById("shiftStart").value;
-  var end_h=document.getElementById("shiftEnd").value;
-  var poste=document.getElementById("shiftPoste").value;
-  if(!start||!end_h){showToast("Heures requises");return;}
-  var date=document.getElementById("shiftDate").value||getWeekDayDate(CDI);
-  var targetDay=getDisplayedWeekDayIndex(date);
-  var targetEmpId=Object.keys(EMP).find(function(id){return EMP[id].name===name;});
-  if(targetEmpId&&!isEmpActiveOnDate(EMP[targetEmpId],date)){showToast("Cette personne n'est pas sous contrat a cette date");return;}
-  var wasEditing=ESIDX!==null;
-  if(ESIDX!==null){
-    var sourceDay=ESHIFT_ORIG_DAY===null?CDI:ESHIFT_ORIG_DAY;
-    var sh=(PD[sourceDay]||[])[ESIDX]; if(!sh)return;
-    sh.name=name; sh.start=start; sh.end=end_h; sh.poste=poste;
-    if(sh.id){
-      await supaPatch("planning",{date:date,emp_nom:name,heure_debut:start,heure_fin:end_h,poste:poste},"id=eq."+sh.id);
-    } else {
-      sh.id="pl_"+Date.now();
-      await supaPost("planning",{id:sh.id,date:date,emp_nom:name,heure_debut:start,heure_fin:end_h,poste:poste});
-    }
-    if(sourceDay!==targetDay){
-      PD[sourceDay].splice(ESIDX,1);
-      if(targetDay>=0) PD[targetDay].push(sh);
-    }
-  } else {
-    var newSh={name:name,start:start,end:end_h,poste:poste,id:"pl_"+Date.now()};
-    if(targetDay>=0) PD[targetDay].push(newSh);
-    await supaPost("planning",{id:newSh.id,date:date,emp_nom:name,heure_debut:start,heure_fin:end_h,poste:poste});
-  }
-  invalidatePlanningCache();
-  closeModal("mShift"); renderCurrentPlanningView(); renderDash();
-  showToast(wasEditing?"Creneau modifie":"Creneau ajoute pour "+name); ESIDX=null; ESHIFT_ORIG_DAY=null;
+  var name=document.getElementById("shiftEmp").value,start=document.getElementById("shiftStart").value,end=document.getElementById("shiftEnd").value,poste=document.getElementById("shiftPoste").value,date=document.getElementById("shiftDate").value||getWeekDayDate(CDI);
+  if(!start||!end||rhMinutes(start,end)<=0){showToast("Horaires invalides : la fin doit suivre le début");return;}
+  var eid=Object.keys(EMP).find(function(k){return EMP[k].name===name;});
+  if(eid&&(!isEmpActiveOnDate(EMP[eid],date)||RH.archived.indexOf(eid)>=0)){showToast("Personne indisponible ou hors contrat");return;}
+  var editing=ESIDX!==null,source=ESHIFT_ORIG_DAY===null?CDI:ESHIFT_ORIG_DAY,old=editing?(PD[source]||[])[ESIDX]:null;
+  if(editing&&!old)return;
+  var row={id:old&&old.id?old.id:"pl_"+Date.now(),date:date,emp_nom:name,heure_debut:start,heure_fin:end,poste:poste};
+  var result=old&&old.id?await supaPatch("planning",row,"id=eq."+old.id):await supaPost("planning",row);
+  if(result===null||Array.isArray(result)&&!result.length){showToast("Créneau non enregistré");return;}
+  if(editing)PD[source].splice(ESIDX,1);
+  var target=getDisplayedWeekDayIndex(date);if(target>=0)PD[target].push({id:row.id,name:name,start:start,end:end,poste:poste});
+  invalidatePlanningCache();closeModal("mShift");renderCurrentPlanningView();renderDash();ESIDX=null;ESHIFT_ORIG_DAY=null;showToast(editing?"Créneau modifié":"Créneau ajouté");
 }
 async function dS(idx,dayIdx){
-  var sourceDay=typeof dayIdx==="number"?dayIdx:CDI;
-  var sh=(PD[sourceDay]||[])[idx];
-  if(sh && sh.id) await supa("planning","DELETE",null,"id=eq."+sh.id);
-  PD[sourceDay].splice(idx,1);
-  invalidatePlanningCache();
-  renderCurrentPlanningView();renderDash();
-  showToast("Creneau supprime");
+  var day=typeof dayIdx==="number"?dayIdx:CDI,sh=(PD[day]||[])[idx];if(!sh)return;
+  if(sh.id){var result=await supaDelete("planning","id=eq."+sh.id);if(result===null){showToast("Suppression refusée : créneau conservé");return;}}
+  PD[day].splice(idx,1);invalidatePlanningCache();renderCurrentPlanningView();renderDash();showToast("Créneau supprimé");
 }
 
 // ── CHECKLISTS ────────────────────────────────────────────────────────────────
@@ -2800,7 +2782,7 @@ async function renderHSem(){
   var annualEntries=empEntries.filter(function(kv){return isCDIAnnualise(kv[1])&&kv[1].hA;});
   var annualRows=[];if(annualEntries.length){var yy=semMon.getFullYear();annualRows=await supaGet("planning","date=gte."+yy+"-01-01&date=lte."+weekEnd+"&limit=5000")||[];}
   var annH="";
-  annualEntries.forEach(function(kv){var id=kv[0],e=kv[1],hs=hoursFromShifts(CURRENT_SEM_ROWS,e.name),cum=hoursFromShifts(annualRows,e.name),expected=getAnnualExpectedAtDate(e,semMon.getFullYear(),weekEnd),diffA=Math.round((cum-expected)*10)/10,restA=Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10),pct=Math.min(100,parseFloat(e.hA)>0?Math.round(cum/parseFloat(e.hA)*100):0);annH+="<div class=\"card\" style=\"border-left:4px solid var(--blue)\"><div class=\"ctitle\">CDI annualisé - "+e.name+"</div><div class=\"irow\"><div class=\"ilbl\">Quota annuel</div><div class=\"ival\">"+fmtH(e.hA)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Cette semaine</div><div class=\"ival\">"+fmtH(hs)+"h / "+fmtH(getWeekTargetForEmp(id,semMon))+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Cumul planifié</div><div class=\"ival\">"+fmtH(cum)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Repère à date</div><div class=\"ival\">"+fmtH(expected)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Avance / retard</div><div class=\"ival\" style=\"color:"+(diffA>=0?"var(--g2)":"var(--red)")+"\">"+(diffA>=0?"+":"")+fmtH(diffA)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Restant quota</div><div class=\"ival\">"+fmtH(restA)+"h</div></div><div class=\"pwrap\"><div class=\"pbar\" style=\"width:"+pct+"%\"></div></div></div>";});
+  annualEntries.forEach(function(kv){var id=kv[0],e=kv[1],hs=hoursFromShifts(CURRENT_SEM_ROWS,e.name),cum=hoursFromShifts(rhCdiRows(annualRows,e),e.name),expected=getAnnualExpectedAtDate(e,semMon.getFullYear(),weekEnd),diffA=Math.round((cum-expected)*10)/10,restA=Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10),pct=Math.min(100,parseFloat(e.hA)>0?Math.round(cum/parseFloat(e.hA)*100):0);annH+="<div class=\"card\" style=\"border-left:4px solid var(--blue)\"><div class=\"ctitle\">CDI annualisé - "+e.name+"</div><div class=\"irow\"><div class=\"ilbl\">Quota annuel</div><div class=\"ival\">"+fmtH(e.hA)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Cette semaine</div><div class=\"ival\">"+fmtH(hs)+"h / "+fmtH(getWeekTargetForEmp(id,semMon))+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Cumul planifié</div><div class=\"ival\">"+fmtH(cum)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Repère à date</div><div class=\"ival\">"+fmtH(expected)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Avance / retard</div><div class=\"ival\" style=\"color:"+(diffA>=0?"var(--g2)":"var(--red)")+"\">"+(diffA>=0?"+":"")+fmtH(diffA)+"h</div></div><div class=\"irow\"><div class=\"ilbl\">Restant quota</div><div class=\"ival\">"+fmtH(restA)+"h</div></div><div class=\"pwrap\"><div class=\"pbar\" style=\"width:"+pct+"%\"></div></div></div>";});
   var rows="";empEntries.forEach(function(kv){var id=kv[0],e=kv[1],fait=hoursFromShifts(CURRENT_SEM_ROWS,e.name),cible=getWeekTargetForEmp(id,semMon),diff=Math.round((fait-cible)*10)/10,pct=cible>0?Math.min(100,Math.round(fait/cible*100)):(fait===0?100:100),cls=Math.abs(diff)<0.5?"ok":diff>0?"over":"under",bcls=cls==="ok"?"hb-ok":cls==="over"?"hb-over":"hb-under",btxt=cls==="ok"?"OK":cls==="over"?("+"+fmtH(Math.abs(diff))+"h sup"):(fmtH(Math.abs(diff))+"h manq");rows+="<div class=\"hrow\" data-eid=\""+id+"\"><div class=\"hav\" style=\"background:"+lvlBg(e.lvl)+"\">"+e.icon+"</div><div style=\"flex:1\"><div class=\"hn\">"+e.name+"</div><div class=\"hd\">"+fmtH(fait)+"h planif. / "+fmtH(cible)+"h "+(isCDIAnnualise(e)?"contrat":"cible")+"</div><div class=\"hbar-wrap\"><div class=\"hbar "+cls+"\" style=\"width:"+pct+"%\"></div></div></div><div class=\"hbadge "+bcls+"\">"+btxt+"</div></div>";});
   el.innerHTML=nav+annH+"<div class=\"card\"><div class=\"ctitle\">Recap equipe - "+semLabel(now)+"</div>"+rows+"</div><div id=\"hdetCard\"></div>";el.onclick=function(ev){var r=ev.target.closest(".hrow");if(r)openHDetail(r.dataset.eid);};
 }
@@ -2929,13 +2911,13 @@ function delCg(id){CGL=CGL.filter(function(c){return c.id!==id;});dbDeleteConge(
 // ── RH ────────────────────────────────────────────────────────────────────────
 function renderEmpList(){
   var el=document.getElementById("empListEl");if(!el)return;var now=new Date(),dow=(now.getDay()+6)%7,monday=new Date(now);monday.setDate(now.getDate()-dow),weekStart=ymdLocal(monday),weekEndD=new Date(monday);weekEndD.setDate(monday.getDate()+6),weekEnd=ymdLocal(weekEndD);
-  el.innerHTML=Object.entries(EMP).filter(function(kv){return isEmpActiveDuringRange(kv[1],weekStart,weekEnd);}).map(function(kv){var id=kv[0],e=kv[1],hs=hSem(e.name),hc=getWeekTargetForEmp(id,monday),diff=Math.round((hs-hc)*10)/10,col=Math.abs(diff)<0.5?"var(--g2)":diff>0?"var(--orange)":"var(--red)";return "<div class=\"eitem\" data-eid=\""+id+"\"><div class=\"eavatar\" style=\"background:"+lvlBg(e.lvl)+"\">"+e.icon+"</div><div class=\"einfo\"><div class=\"ename\">"+e.name+"</div><div class=\"erole\">"+e.role+" - "+e.contract+"</div><div style=\"font-size:11px;font-weight:700;color:"+col+";margin-top:2px\">"+fmtH(hs)+"h / "+fmtH(hc)+"h "+(isCDIAnnualise(e)?"contrat":"cible")+" cette semaine</div></div><div class=\"elvl l"+e.lvl+"\">"+e.lvl+"</div></div>";}).join("");
+  el.innerHTML=Object.entries(EMP).filter(function(kv){return rhListFilter(kv[0],weekStart,weekEnd);}).map(function(kv){var id=kv[0],e=kv[1],hs=hSem(e.name),hc=getWeekTargetForEmp(id,monday),diff=Math.round((hs-hc)*10)/10,col=Math.abs(diff)<0.5?"var(--g2)":diff>0?"var(--orange)":"var(--red)";return "<div class=\"eitem\" data-eid=\""+id+"\"><div class=\"eavatar\" style=\"background:"+lvlBg(e.lvl)+"\">"+e.icon+"</div><div class=\"einfo\"><div class=\"ename\">"+e.name+"</div><div class=\"erole\">"+e.role+" - "+e.contract+"</div><div style=\"font-size:11px;font-weight:700;color:"+col+";margin-top:2px\">"+fmtH(hs)+"h / "+fmtH(hc)+"h "+(isCDIAnnualise(e)?"contrat":"cible")+" cette semaine</div></div><div class=\"elvl l"+e.lvl+"\">"+e.lvl+"</div></div>";}).join("");
   el.onclick=function(e){var r=e.target.closest(".eitem");if(r)openEmpDetail(r.dataset.eid);};buildSS();buildCS();buildLS();
 }
 function showRhList(){document.getElementById("rhList").classList.remove("hidden");document.getElementById("rhDetail").classList.add("hidden");}
 function backToRhList(){showRhList();renderEmpList();}
 function openEmpDetail(id){
-  CEID=id;
+  CEID=id;rhRenderPanel(id);
   document.getElementById("rhList").classList.add("hidden");
   document.getElementById("rhDetail").classList.remove("hidden");
   document.querySelectorAll("[id^='etab-']").forEach(function(b){b.classList.remove("active");});
@@ -2991,7 +2973,7 @@ async function renderEpHeures(id){
   if(isCDIAnnualise(e)&&e.hA){
     var yStart=nowY+"-01-01",cut=tod();if(e.contractEnd&&e.contractEnd<cut)cut=e.contractEnd;
     var yearRows=await supaGet("planning","emp_nom=eq."+encodeURIComponent(e.name)+"&date=gte."+yStart+"&date=lte."+cut+"&limit=2500")||[];
-    var cum=hoursFromShifts(yearRows,e.name),expected=getAnnualExpectedAtDate(e,nowY,cut),diffA=Math.round((cum-expected)*10)/10,restA=Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10);
+    var cum=hoursFromShifts(rhCdiRows(yearRows,e),e.name),expected=getAnnualExpectedAtDate(e,nowY,cut),diffA=Math.round((cum-expected)*10)/10,restA=Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10);
     var pct=Math.min(100,parseFloat(e.hA)>0?Math.round(cum/parseFloat(e.hA)*100):0);
     annualCard="<div class=\"card\"><div class=\"ctitle\">CDI annualisé — suivi "+nowY+"</div>"
       +"<div class=\"irow\"><div class=\"ilbl\">Quota annuel</div><div class=\"ival\">"+fmtH(e.hA)+"h</div></div>"
@@ -3190,15 +3172,17 @@ function renderEpEdit(id){
     +"<div class=\"fr\"><label>Date de fin de contrat</label><input type=\"date\" id=\"ef-end\" value=\""+(e.contractEnd||"")+"\"></div>"
     +"<div class=\"fr\"><label>PIN</label><input type=\"password\" id=\"ef-pin\" maxlength=\"4\" value=\""+(e.pin||"")+"\"></div>"
     +"<div class=\"cbrow\"><label><input type=\"checkbox\" id=\"ef-keys\""+(e.keys?" checked":"")+"> Cles</label><label><input type=\"checkbox\" id=\"ef-boom\""+(e.boom?" checked":"")+"> Boom</label><label><input type=\"checkbox\" id=\"ef-mgr\""+(e.mgr?" checked":"")+"> Gerant</label>"+(isGer?"<label style=\"margin-top:6px\"><input type=\"checkbox\" id=\"ef-precarite\""+(e.prime_precarite?" checked":"")+">&nbsp;Prime précarité</label>":"")+"</div>"
-    +"<button class=\"vbtn\" onclick=\"saveEmpEdit('"+id+"')\">Enregistrer</button>"+(id!=="herve"?"<button class=\"delbtn\" onclick=\"delEmp('"+id+"')\">Supprimer cet employe</button>":"")+"</div>";
+    +"<button class=\"vbtn\" onclick=\"saveEmpEdit('"+id+"')\">Enregistrer</button>"+(id!=="herve"?"<button class=\"delbtn\" onclick=\"delEmp('"+id+"')\">Archiver cet employe</button>":"")+"</div>";
   document.getElementById("epEdit").innerHTML += "<div class=\"card\" style=\"margin-top:0\"><div class=\"ctitle\">Planning type hebdomadaire</div><div style=\"font-size:12px;color:var(--tl);margin-bottom:10px\">Jours et horaires habituels. Deployer depuis l onglet Planning.</div><div id=\"tplanningEditor-"+id+"\"></div></div>";
   var hmWrap=document.createElement("div");hmWrap.className="card";hmWrap.style.marginTop="0";hmWrap.id="monthly-hours-block";
   hmWrap.innerHTML="<div class=\"ctitle\" id=\"monthly-hours-title\"></div><div id=\"monthly-hours-help\" style=\"font-size:11px;color:var(--tl);margin-bottom:10px\"></div>"+buildHMensuelEditor(id)+"<button class=\"vbtn\" style=\"margin-top:12px\" onclick=\"saveEmpEdit('"+id+"')\">Enregistrer les objectifs mensuels</button>";
   document.getElementById("epEdit").appendChild(hmWrap);
-  refreshEmpHoursEditor(id);setTimeout(function(){renderTplanningEditor(id);},0);
+  refreshEmpHoursEditor(id);rhLockLegacyContractEditor(id);setTimeout(function(){renderTplanningEditor(id);},0);
 }
 async function saveEmpEdit(id){
   var e=EMP[id];
+  var confirmedContract=RH.contracts.some(function(c){return c.emp_id===id&&c.confirmed;});
+  if(confirmedContract && (document.getElementById("ef-cont").value!==e.contract || document.getElementById("ef-start").value!==e.since || (document.getElementById("ef-end").value||null)!==e.contractEnd)){showToast("Gérez les changements depuis le bloc Contrats pour conserver l’historique");return;}
   e.name=document.getElementById("ef-nom").value.trim();e.role=document.getElementById("ef-role").value.trim();e.phone=document.getElementById("ef-tel").value.trim();
   e.contract=document.getElementById("ef-cont").value;e.lvl=document.getElementById("ef-lvl").value;e.ct=document.getElementById("ef-ht").value;
   if(!canUseCDIAnnualise(e.contract)&&e.ct==="CDI annualise")e.ct=defaultHoraireForContract(e.contract);
@@ -3206,19 +3190,14 @@ async function saveEmpEdit(id){
     var hwEl=document.getElementById("ef-hw"),hw=hwEl?parseFloat(hwEl.value):NaN;if(!isNaN(hw))e.hW=hw;
     var haEl=document.getElementById("ef-ha"),ha=haEl?parseFloat(haEl.value):NaN;e.hA=isNaN(ha)?null:ha;
   }
-  e.h_mensuel=readHMensuelEditor(id);e.since=document.getElementById("ef-start").value;
+  if(!confirmedContract)e.h_mensuel=readHMensuelEditor(id);e.since=document.getElementById("ef-start").value;
   var efEnd=document.getElementById("ef-end");if(efEnd)e.contractEnd=efEnd.value||null;
   e.pin=document.getElementById("ef-pin").value;e.keys=document.getElementById("ef-keys").checked;e.boom=document.getElementById("ef-boom").checked;e.mgr=document.getElementById("ef-mgr").checked;
   var _prec=document.getElementById("ef-precarite");if(_prec)e.prime_precarite=_prec.checked;
   var saveRes=await dbUpdateEmploye(id,e);if(saveRes===null){showToast("⚠️ Erreur Supabase - non sauvegardé");return;}
   logActivity('Fiche employe modifiee',e.name,'rh');renderEmpHdr(id);renderEpInfos(id);renderEmpList();renderEpHeures(id);showToast("Fiche enregistree !");
 }
-function delEmp(id){
-  var name=EMP[id].name;
-  Object.keys(PD).forEach(function(d){PD[d]=PD[d].filter(function(s){return s.name!==name;});});
-  dbDeleteEmploye(id);
-  delete EMP[id];backToRhList();showToast("Employe supprime");
-}
+function delEmp(id){return rhArchive(id,true);}
 function refreshNewEmpHoursEditor(){
   var c=document.getElementById("neCont"),b=document.getElementById("new-cdi-hours-block");
   if(b)b.style.display=(c&&(c.value==="CDI"||c.value==="SASU"))?"grid":"none";
@@ -3258,6 +3237,7 @@ function openModal(id){
   el.style.opacity="1";
   el.style.background="rgba(0,0,0,.5)";
   el.style.alignItems="flex-end";
+  if(id==="mShift"){["shiftStart","shiftEnd","shiftPoste"].forEach(function(k){document.getElementById(k).oninput=rhShiftPreview;});rhShiftPreview();}
 }
 function closeModal(id){
   var el=document.getElementById(id);
@@ -7286,6 +7266,7 @@ async function refreshAllData(){
   showToast("🔄 Actualisation...");
   try {
     await loadAllData();
+    await rhLoad();
     invalidatePlanningCache();
     // Refresh current visible screen using showScreen
     var screens=["dashboard","planning","checklists","controles","heures","rh"];
@@ -7378,6 +7359,7 @@ async function refreshAllData(){
   showToast("🔄 Actualisation...");
   try {
     await loadAllData();
+    await rhLoad();
     // Refresh current visible screen using showScreen
     var screens=["dashboard","planning","checklists","controles","heures","rh"];
     var active=screens.find(function(sc){
@@ -7474,7 +7456,7 @@ async function renderHAnnee(){
   var emps=Object.entries(EMP).filter(function(kv){return isCDIAnnualise(kv[1])&&isEmpActiveDuringRange(kv[1],yearStart,yearEnd);});if(!isGer)emps=emps.filter(function(kv){return kv[0]===myEmpId;});if(!emps.length){el.innerHTML="<div style='text-align:center;color:var(--tl);padding:30px'>Aucun CDI annualisé</div>";return;}
   el.innerHTML="<div class='card' style='text-align:center;color:var(--tl)'>Chargement du suivi annuel...</div>";var yearRows=await supaGet("planning","date=gte."+yearStart+"&date=lte."+yearEnd+"&limit=5000")||[],cut=tod();
   var html="<div style='margin-bottom:12px;display:flex;align-items:center;justify-content:space-between'><div style='font-size:18px;font-weight:900;color:var(--g1)'>📅 Annualisation "+annee+"</div>"+(isGer?"<button onclick='openMoisPaye()' style='padding:6px 14px;border:none;border-radius:8px;background:var(--g2);color:#fff;font-family:Nunito,sans-serif;font-weight:800;font-size:12px;cursor:pointer'>+ Valider un mois</button>":"")+"</div>";
-  emps.forEach(function(kv){var empId=kv[0],emp=kv[1],allRows=yearRows.filter(function(r){return r.emp_nom===emp.name;}),toDateRows=allRows.filter(function(r){return r.date<=cut;}),cum=hoursFromShifts(toDateRows,emp.name),plannedYear=hoursFromShifts(allRows,emp.name),quota=parseFloat(emp.hA)||0,expected=getAnnualExpectedAtDate(emp,annee,cut),diff=Math.round((cum-expected)*10)/10,remaining=Math.max(0,Math.round((quota-cum)*10)/10),col=diff>=0?"var(--g2)":"var(--red)",moisEmp=MOIS_PAYES.filter(function(m){return m.emp_id===empId&&m.annee===annee;});html+="<div style='background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)'><div style='display:flex;justify-content:space-between;margin-bottom:10px'><div style='font-size:15px;font-weight:900;color:var(--g1)'>"+emp.name+"</div><div style='font-size:11px;color:var(--tl)'>"+fmtH(emp.hW||0)+"h/sem · "+fmtH(quota)+"h/an</div></div><div style='display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:10px'><div style='background:#e8f5e9;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(cum)+"h</b><br><span style='font-size:9px'>Cumul à date</span></div><div style='background:#f5f5f5;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(expected)+"h</b><br><span style='font-size:9px'>Repère à date</span></div><div style='background:"+(diff>=0?"#e8f5e9":"#ffebee")+";border-radius:8px;padding:8px;text-align:center;color:"+col+"'><b>"+(diff>=0?"+":"")+fmtH(diff)+"h</b><br><span style='font-size:9px'>Avance / retard</span></div><div style='background:#e3f2fd;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(remaining)+"h</b><br><span style='font-size:9px'>Restant quota</span></div></div><div style='font-size:10px;color:var(--tl);margin-bottom:8px'>Planifié sur l'année : "+fmtH(plannedYear)+"h</div><div style='display:grid;grid-template-columns:repeat(4,1fr);gap:6px'>";for(var m=1;m<=12;m++){var target=getHMoisForEmp(empId,annee,m),monthRows=allRows.filter(function(r){return parseInt(r.date.substring(5,7),10)===m;}),done=hoursFromShifts(monthRows,emp.name);html+="<div style='background:#f7f7f7;border-radius:8px;padding:6px;text-align:center'><div style='font-size:10px;font-weight:800;color:var(--g1)'>"+MOIS_NOMS[m-1]+"</div><div style='font-size:11px;font-weight:900'>"+fmtH(done)+" / "+fmtH(target)+"h</div></div>";}html+="</div></div>";});el.innerHTML=html;
+  emps.forEach(function(kv){var empId=kv[0],emp=kv[1],allRows=rhCdiRows(yearRows,emp).filter(function(r){return r.emp_nom===emp.name;}),toDateRows=allRows.filter(function(r){return r.date<=cut;}),cum=hoursFromShifts(toDateRows,emp.name),plannedYear=hoursFromShifts(allRows,emp.name),quota=parseFloat(emp.hA)||0,expected=getAnnualExpectedAtDate(emp,annee,cut),diff=Math.round((cum-expected)*10)/10,remaining=Math.max(0,Math.round((quota-cum)*10)/10),col=diff>=0?"var(--g2)":"var(--red)",moisEmp=MOIS_PAYES.filter(function(m){return m.emp_id===empId&&m.annee===annee;});html+="<div style='background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.07)'><div style='display:flex;justify-content:space-between;margin-bottom:10px'><div style='font-size:15px;font-weight:900;color:var(--g1)'>"+emp.name+"</div><div style='font-size:11px;color:var(--tl)'>"+fmtH(emp.hW||0)+"h/sem · "+fmtH(quota)+"h/an</div></div><div style='display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-bottom:10px'><div style='background:#e8f5e9;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(cum)+"h</b><br><span style='font-size:9px'>Cumul à date</span></div><div style='background:#f5f5f5;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(expected)+"h</b><br><span style='font-size:9px'>Repère à date</span></div><div style='background:"+(diff>=0?"#e8f5e9":"#ffebee")+";border-radius:8px;padding:8px;text-align:center;color:"+col+"'><b>"+(diff>=0?"+":"")+fmtH(diff)+"h</b><br><span style='font-size:9px'>Avance / retard</span></div><div style='background:#e3f2fd;border-radius:8px;padding:8px;text-align:center'><b>"+fmtH(remaining)+"h</b><br><span style='font-size:9px'>Restant quota</span></div></div><div style='font-size:10px;color:var(--tl);margin-bottom:8px'>Planifié sur l'année : "+fmtH(plannedYear)+"h</div><div style='display:grid;grid-template-columns:repeat(4,1fr);gap:6px'>";for(var m=1;m<=12;m++){var target=getHMoisForEmp(empId,annee,m),monthRows=allRows.filter(function(r){return parseInt(r.date.substring(5,7),10)===m;}),done=hoursFromShifts(monthRows,emp.name);html+="<div style='background:#f7f7f7;border-radius:8px;padding:6px;text-align:center'><div style='font-size:10px;font-weight:800;color:var(--g1)'>"+MOIS_NOMS[m-1]+"</div><div style='font-size:11px;font-weight:900'>"+fmtH(done)+" / "+fmtH(target)+"h</div></div>";}html+="</div></div>";});el.innerHTML=html;
 }
 
 function openMoisPaye(){
@@ -7732,7 +7714,7 @@ function hoursFromShifts(rows,name){
   });
   return Math.round(total*10)/10;
 }
-function invalidatePlanningCache(){PLAN_MONTH_CACHE={};}
+function invalidatePlanningCache(){PLAN_MONTH_CACHE={};if(typeof RH!=="undefined"){RH.details={};RH.generation++;}}
 async function getPlanningMonthRows(anchor){
   var y=anchor.getFullYear(),m=anchor.getMonth()+1,key=y+"-"+String(m).padStart(2,"0");
   if(PLAN_MONTH_CACHE[key])return PLAN_MONTH_CACHE[key];
@@ -7875,7 +7857,7 @@ async function renderPlanningWeek(){
   html+="<tr><th style='padding:6px;background:var(--g1);color:#fff;text-align:left;min-width:104px'>Employé</th>";for(var d=0;d<7;d++){var date=new Date(monday);date.setDate(monday.getDate()+d);var ds=ymdLocal(date),isToday=ds===tod();html+="<th style='padding:6px;background:"+(isToday?"var(--g2)":"var(--g1)")+";color:#fff;text-align:center;min-width:76px'>"+days[d]+"<br><span style='font-size:9px;opacity:.8'>"+date.getDate()+"/"+(date.getMonth()+1)+"</span>"+(CU&&CU.role==="gerant"?"<br><span onclick=\"event.stopPropagation();CDI="+d+";openAddShift()\" style='cursor:pointer;font-size:11px;background:rgba(255,255,255,.2);border-radius:4px;padding:1px 5px'>+</span>":"")+"</th>";}html+="</tr>";
   html+=planningNotesRow(monday,PLAN_NOTES);
   empIds.forEach(function(empId){var emp=EMP[empId],cells=[];for(var d=0;d<7;d++){var dayShifts=(PD[d]||[]).filter(function(sh){return sh.name===emp.name;}),wDate=new Date(monday);wDate.setDate(monday.getDate()+d);var wDs=ymdLocal(wDate),activeThisDay=isEmpActiveOnDate(emp,wDs),wIndispo=INDISPO.some(function(x){return x.empId===empId&&x.date===wDs&&x.status==="accepted";}),wCP=isOnLeave(empId,wDs);if(!activeThisDay)cells.push("<td class='plan-cell plan-inactive' title='Hors contrat'></td>");else if(wIndispo)cells.push("<td style='padding:4px;background:#ede7f6;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:#6a1b9a;font-weight:800'>Indispo</span></td>");else if(wCP)cells.push("<td style='padding:4px;background:#fff3e0;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:var(--orange);font-weight:800'>CP</span></td>");else if(dayShifts.length){var cell="<td class='plan-cell plan-active' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\">";dayShifts.forEach(function(sh){var style=planningStyleFor(sh.poste),shIdx=(PD[d]||[]).indexOf(sh);cell+="<div class='plan-shift-block' draggable='true' title='Cliquer pour modifier · glisser pour déplacer' onclick=\"event.stopPropagation();oES("+shIdx+","+d+")\" ondragstart=\"planningDragStart(event,"+d+","+shIdx+")\" style='background:"+style.bg+";color:"+style.fg+";border-left-color:"+style.border+"'>"+(sh.start&&sh.end?sh.start+"-"+sh.end:"")+"<br><span style='font-weight:700'>"+(sh.poste||"")+"</span></div>";});cells.push(cell+"</td>");}else cells.push("<td class='plan-cell plan-active' title='Ajouter un créneau' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\"></td>");}
-    var wh=hoursFromShifts(weekRows,emp.name),weekTarget=getWeekTargetForEmp(empId,monday),mh=hoursFromShifts(monthRows,emp.name),monthTarget=getHMoisForEmp(empId,monthRef.getFullYear(),monthRef.getMonth()+1);html+="<tr><td class='plan-emp-cell'><div style='display:flex;align-items:center;gap:5px'><div class='plan-emp-name' style='flex:1'>"+emp.name.split(" ")[0]+"</div>"+(CU&&CU.role==="gerant"?"<button type='button' title='Appliquer un planning type' onclick=\"event.stopPropagation();openEmployeeTplanning('"+empId+"')\" style='border:0;background:#e8f5e9;color:var(--g1);border-radius:7px;min-width:30px;height:30px;font-size:15px;cursor:pointer;padding:0'>⚡</button>":"")+"</div><div class='plan-emp-hours'>Semaine : "+fmtH(wh)+" / "+fmtH(weekTarget)+" h<br>"+MS[monthRef.getMonth()]+" : "+fmtH(mh)+" / "+fmtH(monthTarget)+" h</div></td>"+cells.join("")+"</tr>";});el.innerHTML=html+"</table></div>";
+    var wh=hoursFromShifts(weekRows,emp.name),weekTarget=getWeekTargetForEmp(empId,monday),mh=hoursFromShifts(monthRows,emp.name),monthTarget=getHMoisForEmp(empId,monthRef.getFullYear(),monthRef.getMonth()+1);html+="<tr><td class='plan-emp-cell'><div style='display:flex;align-items:center;gap:5px'><div class='plan-emp-name' style='flex:1'>"+emp.name.split(" ")[0]+"</div>"+(CU&&CU.role==="gerant"?"<button type='button' title='Appliquer un planning type' onclick=\"event.stopPropagation();openEmployeeTplanning('"+empId+"')\" style='border:0;background:#e8f5e9;color:var(--g1);border-radius:7px;min-width:30px;height:30px;font-size:15px;cursor:pointer;padding:0'>⚡</button>":"")+"</div><div class='plan-emp-hours'>Semaine : "+fmtH(wh)+" / "+fmtH(weekTarget)+" h<br>"+MS[monthRef.getMonth()]+" : "+fmtH(mh)+" / "+fmtH(monthTarget)+" h</div><div data-rh-emp='"+empId+"'></div></td>"+cells.join("")+"</tr>";});el.innerHTML=html+"</table></div>";rhPaintCounters();
 }
 async function renderPlanningMonth(){
   var el=document.getElementById("planningContent");if(!el)return;
@@ -8060,6 +8042,7 @@ function hasHMoisOverride(e,year,month){
 }
 function getHMoisForEmp(empId,year,month){
   var e=EMP[empId];if(!e)return 0;
+  e=rhEffective(e,year+"-"+String(month).padStart(2,"0")+"-15");
   if(isCDIAnnualise(e)){
     if(hasHMoisOverride(e,year,month)){
       var ov=parseFloat(e.h_mensuel[year][month]);
@@ -8084,7 +8067,7 @@ function getActiveDaysInMonth(e,year,month){
   return n;
 }
 function getWeekTargetForEmp(empId,monday){
-  var e=EMP[empId];if(!e)return 0;
+  var e=EMP[empId];if(!e)return 0;e=rhEffective(e,ymdLocal(monday));
   if(isCDIAnnualise(e)){
     var hw=parseFloat(e.hW);return isNaN(hw)?0:hw;
   }
@@ -8868,6 +8851,8 @@ async function delNote(empId, idx){
 
 // ── Filtre employé actif sur un mois donné ─────────────────────
 function isEmpActive(e, year, month){
+  var id=Object.keys(EMP).find(function(k){return EMP[k]===e;}),from=year+"-"+String(month).padStart(2,"0")+"-01",to=year+"-"+String(month).padStart(2,"0")+"-"+new Date(year,month,0).getDate();
+  if(id&&RH.contracts.some(function(c){return c.emp_id===id&&c.confirmed;}))return isEmpActiveDuringRange(e,from,to);
   // e = employee object from EMP
   if(!e) return false;
   // Check contract_end: if set and before this month, employee is inactive
@@ -8897,7 +8882,7 @@ async function exportRH_PDF(year, month){
   var yearRows=await supaGet("planning","date=gte."+year+"-01-01&date=lte."+lastDayStr+"&order=date.asc&limit=5000")||[];
   var css=["body{font-family:Arial,sans-serif;font-size:11px;color:#222;margin:0;padding:0}","h1{font-size:16px;color:#2e7d32;margin:0 0 4px}",".header{background:#f1f8e9;padding:10px 14px;margin-bottom:12px;border-radius:6px}",".emp-block{page-break-inside:avoid;margin-bottom:20px;border:1px solid #e0e0e0;border-radius:6px;padding:12px}",".emp-name{font-size:14px;font-weight:bold;color:#1b5e20;margin-bottom:6px}",".emp-meta{display:flex;gap:10px;font-size:10px;color:#555;margin-bottom:8px;flex-wrap:wrap}",".emp-meta span{background:#f5f5f5;padding:2px 8px;border-radius:4px}",".summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px}",".sum-box{text-align:center;padding:6px;border-radius:6px}",".sum-box .val{font-size:16px;font-weight:bold}",".sum-box .lbl{font-size:9px;color:#777}","table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:8px}","th{background:#2e7d32;color:#fff;padding:4px 6px;text-align:left}","td{padding:4px 6px;border-bottom:1px solid #f0f0f0}","tr:nth-child(even) td{background:#fafafa}",".absent td{color:#e53935;background:#fff5f5}",".signature-box{margin-top:12px;border:1px solid #ccc;border-radius:4px;padding:10px}",".sig-line{border-bottom:1px solid #999;margin:20px 0 4px;height:1px}",".sig-label{font-size:9px;color:#777}","@media print{.emp-block{page-break-after:always}}"].join("\n");
   var html="<!DOCTYPE html><html><head><meta charset='utf-8'><title>Export RH "+moisNom+"</title><style>"+css+"</style></head><body><div class='header'><h1>🌿 Jungle Park Le Coteau</h1><div style='font-size:13px;font-weight:bold;color:#555'>Récapitulatif mensuel — "+moisNom+"</div><div style='font-size:10px;color:#777;margin-top:2px'>Généré le "+new Date().toLocaleDateString('fr-FR')+"</div></div>";
-  Object.entries(EMP).filter(function(kv){return isEmpActive(kv[1],year,month);}).forEach(function(kv){var id=kv[0],e=kv[1],empRows=planRows.filter(function(r){return r.emp_nom===e.name;}),totalH=hoursFromShifts(empRows,e.name),target=getHMoisForEmp(id,year,month),diff=Math.round((totalH-target)*10)/10,annual=isCDIAnnualise(e),cum=0,expected=0,annualDiff=0,restQuota="";if(annual){var yrEmp=yearRows.filter(function(r){return r.emp_nom===e.name;}),cum=hoursFromShifts(yrEmp,e.name);expected=e.hA?getAnnualExpectedAtDate(e,year,lastDayStr):0;annualDiff=Math.round((cum-expected)*10)/10;restQuota=e.hA?Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10):"";}var shownDiff=annual?annualDiff:diff,diffCol=shownDiff>=0?"#2e7d32":"#e53935";html+="<div class='emp-block'><div class='emp-name'>"+e.name+"</div><div class='emp-meta'><span>📋 "+(e.contract||"")+(e.ct?" — "+e.ct:"")+"</span>"+(annual?"<span>⏱ "+fmtH(parseFloat(e.hW)||0)+"h/sem</span>":"")+(e.since?"<span>📅 Entrée: "+e.since+"</span>":"")+(e.contractEnd?"<span>🏁 Fin: "+e.contractEnd+"</span>":"")+(annual&&e.hA?"<span>🎯 Quota annuel: "+fmtH(e.hA)+"h</span>":"")+(e.nss?"<span>🔒 NSS: "+e.nss+"</span>":"")+(e.prime_precarite?"<span style='background:#fff3e0;color:#e65100'>⚠️ Prime précarité</span>":"")+"</div><div class='summary'><div class='sum-box' style='background:#e8f5e9'><div class='val' style='color:#2e7d32'>"+fmtH(annual?cum:totalH)+"h</div><div class='lbl'>"+(annual?"Cumul annuel à fin de mois":"Planifiées")+"</div></div><div class='sum-box' style='background:#f5f5f5'><div class='val' style='color:#555'>"+fmtH(annual?expected:target)+"h</div><div class='lbl'>"+(annual?"Trajectoire attendue":"Objectif du mois")+"</div></div><div class='sum-box' style='background:"+(shownDiff>=0?"#e8f5e9":"#ffebee")+"'><div class='val' style='color:"+diffCol+"'>"+(shownDiff>=0?"+":"")+fmtH(shownDiff)+"h</div><div class='lbl'>"+(annual?"Solde annualisation":"Écart")+"</div></div></div>"+(annual?"<div style='font-size:10px;color:#666;margin:-4px 0 10px'>Mois : "+fmtH(totalH)+" h planifiées · repère moyen "+fmtH(target)+" h"+(e.hA?" · reste sur quota "+fmtH(restQuota)+" h":" · quota annuel à renseigner")+"</div>":"");
+  Object.entries(EMP).filter(function(kv){return isEmpActive(kv[1],year,month);}).forEach(function(kv){var id=kv[0],e=kv[1],empRows=planRows.filter(function(r){return r.emp_nom===e.name;}),totalH=hoursFromShifts(empRows,e.name),target=getHMoisForEmp(id,year,month),diff=Math.round((totalH-target)*10)/10,annual=isCDIAnnualise(e),cum=0,expected=0,annualDiff=0,restQuota="";if(annual){var yrEmp=rhCdiRows(yearRows,e).filter(function(r){return r.emp_nom===e.name;}),cum=hoursFromShifts(yrEmp,e.name);expected=e.hA?getAnnualExpectedAtDate(e,year,lastDayStr):0;annualDiff=Math.round((cum-expected)*10)/10;restQuota=e.hA?Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10):"";}var shownDiff=annual?annualDiff:diff,diffCol=shownDiff>=0?"#2e7d32":"#e53935";html+="<div class='emp-block'><div class='emp-name'>"+e.name+"</div><div class='emp-meta'><span>📋 "+(e.contract||"")+(e.ct?" — "+e.ct:"")+"</span>"+(annual?"<span>⏱ "+fmtH(parseFloat(e.hW)||0)+"h/sem</span>":"")+(e.since?"<span>📅 Entrée: "+e.since+"</span>":"")+(e.contractEnd?"<span>🏁 Fin: "+e.contractEnd+"</span>":"")+(annual&&e.hA?"<span>🎯 Quota annuel: "+fmtH(e.hA)+"h</span>":"")+(e.nss?"<span>🔒 NSS: "+e.nss+"</span>":"")+(e.prime_precarite?"<span style='background:#fff3e0;color:#e65100'>⚠️ Prime précarité</span>":"")+"</div><div class='summary'><div class='sum-box' style='background:#e8f5e9'><div class='val' style='color:#2e7d32'>"+fmtH(annual?cum:totalH)+"h</div><div class='lbl'>"+(annual?"Cumul annuel à fin de mois":"Planifiées")+"</div></div><div class='sum-box' style='background:#f5f5f5'><div class='val' style='color:#555'>"+fmtH(annual?expected:target)+"h</div><div class='lbl'>"+(annual?"Trajectoire attendue":"Objectif du mois")+"</div></div><div class='sum-box' style='background:"+(shownDiff>=0?"#e8f5e9":"#ffebee")+"'><div class='val' style='color:"+diffCol+"'>"+(shownDiff>=0?"+":"")+fmtH(shownDiff)+"h</div><div class='lbl'>"+(annual?"Solde annualisation":"Écart")+"</div></div></div>"+(annual?"<div style='font-size:10px;color:#666;margin:-4px 0 10px'>Mois : "+fmtH(totalH)+" h planifiées · repère moyen "+fmtH(target)+" h"+(e.hA?" · reste sur quota "+fmtH(restQuota)+" h":" · quota annuel à renseigner")+"</div>":"");
     if(empRows.length){html+="<table><tr><th>Date</th><th>Jour</th><th>Horaires</th><th>Heures</th><th>Poste</th></tr>";empRows.forEach(function(r){var d=new Date(r.date+"T12:00:00"),dow=JOURS_COURTS[d.getDay()],isAbsent=r.poste&&(r.poste||"").toLowerCase().indexOf("absent")>=0,h=isAbsent?0:calcH(r.heure_debut,r.heure_fin);html+="<tr"+(isAbsent?" class='absent'":"")+"><td>"+r.date.split("-").reverse().join("/")+"</td><td>"+dow+"</td><td>"+(r.heure_debut&&r.heure_fin?r.heure_debut+"–"+r.heure_fin:"—")+"</td><td>"+fmtH(h)+"h</td><td>"+(r.poste||"")+"</td></tr>";});html+="</table>";}else html+="<div style='color:#999;font-size:10px;padding:8px 0'>Aucun créneau ce mois</div>";
     html+="<div class='signature-box'><div style='font-size:10px;font-weight:bold;margin-bottom:8px'>Lu et approuvé par l'employé(e)</div><div style='display:grid;grid-template-columns:1fr 1fr;gap:20px'><div><div class='sig-line'></div><div class='sig-label'>Signature de "+e.name+"</div></div><div><div class='sig-line'></div><div class='sig-label'>Date</div></div></div></div></div>";});
   html+="</body></html>";var w=window.open("","_blank","width=800,height=600");w.document.write(html);w.document.close();w.focus();setTimeout(function(){w.print();},500);showToast("PDF prêt ✅");
@@ -8906,7 +8891,7 @@ async function exportRH_PDF(year, month){
 async function exportRH_CSV(year, month){
   showToast("Génération Excel en cours...");var firstDay=year+"-"+String(month).padStart(2,"0")+"-01",lastDay=new Date(year,month,0),lastDayStr=year+"-"+String(month).padStart(2,"0")+"-"+String(lastDay.getDate()).padStart(2,"0"),moisNom=MNAMES[month-1]+" "+year,JOURS_COURTS=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"],planRows=await supaGet("planning","date=gte."+firstDay+"&date=lte."+lastDayStr+"&order=date.asc&limit=2000")||[],yearRows=await supaGet("planning","date=gte."+year+"-01-01&date=lte."+lastDayStr+"&order=date.asc&limit=5000")||[];
   var rows=[["JUNGLE PARK LE COTEAU — Récapitulatif RH "+moisNom],["Généré le "+new Date().toLocaleDateString('fr-FR')],[],["RÉSUMÉ PAR EMPLOYÉ"],["Nom","Contrat","Type horaire","H/semaine","Repère/Objectif mois","H planifiées mois","Écart mois indicatif","Quota annuel","Cumul annuel","Trajectoire attendue","Solde annualisation","Reste quota","Entrée","Fin","NSS","Prime Précarité"]];
-  Object.entries(EMP).filter(function(kv){return isEmpActive(kv[1],year,month);}).forEach(function(kv){var id=kv[0],e=kv[1],empRows=planRows.filter(function(r){return r.emp_nom===e.name;}),totalH=hoursFromShifts(empRows,e.name),target=getHMoisForEmp(id,year,month),diff=Math.round((totalH-target)*10)/10,annual=isCDIAnnualise(e),cum=annual?hoursFromShifts(yearRows.filter(function(r){return r.emp_nom===e.name;}),e.name):"",expected=annual&&e.hA?getAnnualExpectedAtDate(e,year,lastDayStr):"",annualDiff=annual&&e.hA?Math.round((cum-expected)*10)/10:"",restQuota=annual&&e.hA?Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10):"";rows.push([e.name,e.contract||"",e.ct||"",annual?(parseFloat(e.hW)||0):"",target,totalH,(diff>=0?"+":"")+diff+"h",annual&&e.hA?e.hA:"",cum,expected,annualDiff===""?"":(annualDiff>=0?"+":"")+annualDiff+"h",restQuota,e.since||"",e.contractEnd||"",e.nss||"",e.prime_precarite?"Oui":"Non"]);});
+  Object.entries(EMP).filter(function(kv){return isEmpActive(kv[1],year,month);}).forEach(function(kv){var id=kv[0],e=kv[1],empRows=planRows.filter(function(r){return r.emp_nom===e.name;}),totalH=hoursFromShifts(empRows,e.name),target=getHMoisForEmp(id,year,month),diff=Math.round((totalH-target)*10)/10,annual=isCDIAnnualise(e),cum=annual?hoursFromShifts(rhCdiRows(yearRows,e).filter(function(r){return r.emp_nom===e.name;}),e.name):"",expected=annual&&e.hA?getAnnualExpectedAtDate(e,year,lastDayStr):"",annualDiff=annual&&e.hA?Math.round((cum-expected)*10)/10:"",restQuota=annual&&e.hA?Math.max(0,Math.round((parseFloat(e.hA)-cum)*10)/10):"";rows.push([e.name,e.contract||"",e.ct||"",annual?(parseFloat(e.hW)||0):"",target,totalH,(diff>=0?"+":"")+diff+"h",annual&&e.hA?e.hA:"",cum,expected,annualDiff===""?"":(annualDiff>=0?"+":"")+annualDiff+"h",restQuota,e.since||"",e.contractEnd||"",e.nss||"",e.prime_precarite?"Oui":"Non"]);});
   rows.push([], ["DÉTAIL JOURNALIER"],["Nom","Contrat","Date","Jour","Heure début","Heure fin","Heures","Poste"]);Object.entries(EMP).filter(function(kv){return isEmpActive(kv[1],year,month);}).forEach(function(kv){var e=kv[1],empRows=planRows.filter(function(r){return r.emp_nom===e.name;});empRows.forEach(function(r){var d=new Date(r.date+"T12:00:00"),dow=JOURS_COURTS[d.getDay()],isAbsent=(r.poste||"").toLowerCase().indexOf("absent")>=0,h=isAbsent?0:calcH(r.heure_debut,r.heure_fin);rows.push([e.name,e.contract||"",r.date.split("-").reverse().join("/"),dow,r.heure_debut||"",r.heure_fin||"",fmtH(h)+"h",r.poste||""]);});if(empRows.length)rows.push([]);});downloadCSV("RH_"+year+"_"+String(month).padStart(2,"0")+".csv",rows);showToast("Export CSV prêt ✅");
 }
 
@@ -9403,5 +9388,6 @@ buildLS();
 <button class="vbtn" style="background:#1565c0;margin-top:8px" onclick="doExportRH('csv')">📊 CSV (Excel)</button>
 <button class="cnclbtn" onclick="closeModal('mExportRH')">Annuler</button>
 </div></div>
+<script src="rh-contracts.js?v=20261102-1"></script>
 </body>
 </html>
