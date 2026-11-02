@@ -1592,6 +1592,7 @@ async function loadAllData() {
           h_mensuel: e.h_mensuel||{}
         };
       });
+      if(typeof rhApplyCurrent==="function")rhApplyCurrent();
     }
 
     // Conges
