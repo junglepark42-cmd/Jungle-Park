@@ -1,1 +1,11 @@
-{"name":"jungle-park","private":true,"scripts":{"test":"node --test tests/rh-contracts.test.cjs && node tests/rh-database.test.cjs"},"devDependencies":{"@electric-sql/pglite":"0.3.14"}}
+{
+  "name": "jungle-park",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/rh-contracts.test.cjs && node tests/rh-database.test.cjs",
+    "test:notifications": "node --test tests/notifications-client.test.cjs && node tests/notifications-database.test.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14"
+  }
+}
