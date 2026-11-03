@@ -220,7 +220,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
 .urgitem{display:flex;align-items:center;justify-content:space-between;padding:13px;background:#fff5f5;border-radius:var(--rs);border-left:4px solid var(--red);margin-bottom:10px}
 .urgname{font-size:14px;font-weight:800}
 .callbtn{padding:8px 14px;background:var(--red);color:#fff;border-radius:8px;border:none;font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer}
-.fab{position:fixed;bottom:76px;right:16px;z-index:90;width:52px;height:52px;border-radius:50%;background:var(--red);color:#fff;font-size:22px;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(229,57,53,.5);display:none;align-items:center;justify-content:center}
+.fab{position:fixed;bottom:76px;right:16px;z-index:90;width:52px;height:52px;border-radius:50%;background:var(--g1);color:#fff;font-size:22px;border:none;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);display:none;align-items:center;justify-content:center}
 .toast{position:fixed;top:76px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--g1);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:700;z-index:300;opacity:0;transition:all .3s;white-space:nowrap}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .struct-item{background:#fff;border-radius:var(--rs);padding:12px;margin-bottom:8px;box-shadow:0 2px 8px rgba(0,0,0,.06);cursor:pointer;transition:transform .1s}
@@ -247,6 +247,12 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
 .pin-dot.filled{background:var(--g2);border-color:var(--g2)}
 .pin-btn{padding:16px;font-size:22px;font-weight:900;border:none;border-radius:12px;background:#f5f5f5;cursor:pointer;font-family:Nunito,sans-serif;color:var(--g1);transition:background .1s;-webkit-tap-highlight-color:transparent}
 .pin-btn:active{background:#e0e0e0}
+
+#notificationBadge{position:absolute;right:-4px;top:-5px;min-width:22px;height:22px;padding:0 4px;border-radius:20px;align-items:center;justify-content:center;background:#d32f2f;color:#fff;border:2px solid #fff;font:800 11px Nunito,sans-serif}
+.notification-item{display:flex;gap:8px;border-bottom:1px solid #eee;padding:10px 0;align-items:center}
+.notification-open{flex:1;text-align:left;border:0;background:#f4f8f4;padding:10px;border-radius:8px;font:inherit;font-size:13px;color:var(--tx);cursor:pointer}
+.notification-open span{font-size:12px;color:var(--tm)}
+.notification-read{border:1px solid #ddd;background:white;padding:10px 8px;border-radius:8px;color:var(--g1);font-weight:800;cursor:pointer}
 </style>
 </head>
 <body>
@@ -482,7 +488,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
     <button class="ni" onclick="showScreen('rh')" id="nav-rh"><span class="ni-icon">&#x1F465;</span><span class="ni-lbl">RH</span></button>
   </div>
 </div>
-<button class="fab" id="fab" onclick="openUrgence()">&#x1F6A8;</button>
+<button class="fab" id="fab" onclick="notifsOpen()" aria-label="Notifications" title="Notifications">🔔<span id="notificationBadge" aria-live="polite" style="display:none"></span></button>
 <div class="mo" id="mAddTacheSpeciale" onclick="if(event.target===this)closeModal('mAddTacheSpeciale')"><div class="ms" style="max-height:94vh">
   <div class="mh"></div>
   <div class="mtitle">&#x2B50; Tache speciale</div>
@@ -1824,13 +1830,13 @@ async function dbDeleteConge(id) {
 // Indispo
 async function dbSaveIndispo(ind) {
   var row = {id:ind.id, emp_id:ind.empId, date:ind.date, motif:ind.motif||"", status:ind.status||"pending"};
-  await supaPost("indisponibilites", row);
+  return await supaPost("indisponibilites", row);
 }
 async function dbUpdateIndispo(id, status) {
-  await supaPatch("indisponibilites", {status:status}, "id=eq."+id);
+  return await supaPatch("indisponibilites", {status:status}, "id=eq."+id);
 }
 async function dbDeleteIndispo(id) {
-  await supaDelete("indisponibilites", "id=eq."+id);
+  return await supaDelete("indisponibilites", "id=eq."+id);
 }
 
 // Temperature
@@ -2178,6 +2184,7 @@ async function doLogin(){
     // Re-render checklists after data loaded to show saved states
     renderCL(CL);
     if(!ok) showToast("Mode hors-ligne - donnees locales");
+    notifsStart();
   });
 }
 function showLoginError(msg){
@@ -2193,6 +2200,7 @@ function showLoginError(msg){
   setTimeout(function(){el.textContent="";},3000);
 }
 function doLogout(){
+  notifsReset();closeModal("mNotifications");
   rhLogout();
   document.getElementById("loginScreen").style.display="flex";
   document.getElementById("app").style.display="none";
@@ -5061,7 +5069,9 @@ function openIndispoModal(){
     }
   },30);
 }
-function saveIndispo(){
+var indispoSaving=false;
+async function saveIndispo(){
+  if(indispoSaving)return;
   var empId=document.getElementById("indispoEmp").value;
   var date=document.getElementById("indispoDate").value;
   var motif=document.getElementById("indispoMotif").value.trim();
@@ -5070,8 +5080,8 @@ function saveIndispo(){
   var exists=INDISPO.find(function(x){return x.empId===empId&&x.date===date&&x.status!=="refused";});
   if(exists){showToast("Indispo deja enregistree pour ce jour");return;}
   var newInd={id:"ind_"+Date.now(),empId:empId,date:date,motif:motif,status:"pending",createdAt:tod()};
-  INDISPO.push(newInd);
-  dbSaveIndispo(newInd);
+  indispoSaving=true;var saved;try{saved=await dbSaveIndispo(newInd);}finally{indispoSaving=false;}if(saved===null)return;
+  INDISPO.push(newInd);notifsPoll(true);
   closeModal("mIndispo");renderIndispoTab();
   showToast("Indisponibilite enregistree !");
 }
@@ -5094,7 +5104,7 @@ function renderIndispos(){
         +"<button onclick='updIndispo(\""+x.id+"\",\"accepted\")' style='flex:1;padding:8px;background:#e8f5e9;border:1px solid #c8e6c9;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:var(--g1);font-family:Nunito,sans-serif'>Accepter</button>"
         +"<button onclick='updIndispo(\""+x.id+"\",\"refused\")' style='flex:1;padding:8px;background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:var(--red);font-family:Nunito,sans-serif'>Refuser</button>"
         +"</div>":"";
-    return "<div style='background:"+sBg[x.status]+";border-radius:10px;padding:12px;margin-bottom:10px;border-left:4px solid "+sCol[x.status]+"'>"
+    return "<div data-indispo-id='"+rhEscape(x.id)+"' style='background:"+sBg[x.status]+";border-radius:10px;padding:12px;margin-bottom:10px;border-left:4px solid "+sCol[x.status]+"'>"
       +"<div style='display:flex;align-items:center;justify-content:space-between'>"
       +"<b>"+(isGer?(emp?emp.name:"?")+(" - "):"")+jjmmaaaa(x.date)+"</b>"
       +"<span style='font-size:11px;font-weight:700;padding:2px 10px;border-radius:12px;background:rgba(255,255,255,.7);color:"+sCol[x.status]+"'>"+sTxt[x.status]+"</span></div>"
@@ -5116,13 +5126,15 @@ function renderIndispoTab(){
     +"</div><div id='indispoList'></div>";
   renderIndispos();
 }
-function updIndispo(id,status){
+async function updIndispo(id,status){
   var x=INDISPO.find(function(i){return i.id===id;});if(!x)return;
-  x.status=status;dbUpdateIndispo(id,status);renderIndispos();
+  if(!CU||CU.role!=="gerant")return;
+  var saved=await dbUpdateIndispo(id,status);if(saved===null||Array.isArray(saved)&&!saved.length)return;
+  x.status=status;renderIndispos();notifsPoll(true);
   if(status==="accepted")initDayTabs();
   showToast(status==="accepted"?"Indispo acceptee":"Indispo refusee");
 }
-function delIndispo(id){dbDeleteIndispo(id);INDISPO=INDISPO.filter(function(x){return x.id!==id;});renderIndispos();showToast("Supprimee");}
+async function delIndispo(id){var saved=await dbDeleteIndispo(id);if(saved===null)return;INDISPO=INDISPO.filter(function(x){return x.id!==id;});renderIndispos();notifsPoll(true);showToast("Supprimee");}
 
 var INCIDENT_TYPES=[
   {id:"temp",label:"Temperature hors zone",icon:"&#x1F321;",col:"var(--blue)"},
@@ -9390,5 +9402,7 @@ buildLS();
 <button class="cnclbtn" onclick="closeModal('mExportRH')">Annuler</button>
 </div></div>
 <script src="rh-contracts.js?v=20261102-1"></script>
+<div class="mo" role="dialog" aria-modal="true" aria-label="Notifications" id="mNotifications" onclick="if(event.target===this)closeModal('mNotifications')"><div class="ms" style="max-height:85vh;overflow:auto"><div class="mh"></div><div class="mtitle">🔔 Notifications</div><p style="font-size:12px;color:var(--tm);margin-bottom:8px">Ouvrez une demande ou marquez-la comme lue. Les lectures sont conservées sur votre compte.</p><div id="notificationsContent"></div><button class="cnclbtn" id="notificationsReadAll" onclick="notifsReadAll()">Tout marquer comme lu</button><button class="cnclbtn" onclick="notifsPoll(true)">Actualiser les notifications</button><button class="vbtn" onclick="closeModal('mNotifications')">Fermer</button></div></div>
+<script src="notifications.js?v=20261103-1"></script>
 </body>
 </html>

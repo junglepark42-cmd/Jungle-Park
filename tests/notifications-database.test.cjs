@@ -1,0 +1,18 @@
+const {PGlite}=require('@electric-sql/pglite');const fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
+(async()=>{const db=new PGlite();await db.exec(`create role anon;create role authenticated;create schema rh_private;
+create table employes(id text primary key,nom text,is_manager boolean,contract_end date);
+create table rh_private.archive(emp_id text);
+create table rh_private.sessions(token uuid,emp_id text,expires_at timestamptz);
+create table indisponibilites(id text primary key,emp_id text,date date,motif text,status text,created_at timestamptz default now());
+insert into employes values('manager1','Gérant A',true,null),('manager2','Gérant B',true,null),('worker1','Salarié A',false,null),('worker2','Salarié B',false,null);
+insert into rh_private.sessions values('00000000-0000-4000-8000-000000000001','manager1',now()+interval '1 hour'),('00000000-0000-4000-8000-000000000002','manager2',now()+interval '1 hour'),('00000000-0000-4000-8000-000000000003','worker1',now()+interval '1 hour'),('00000000-0000-4000-8000-000000000004','worker2',now()+interval '1 hour');
+insert into indisponibilites values('initial','worker1',current_date+30,'', 'pending',now());`);
+const sql=fs.readFileSync(path.join(__dirname,'../sql/internal_notifications.sql'),'utf8');await db.exec(sql);
+const call=async(action,user,payload={})=>(await db.query('select public.internal_notifications_api($1,$2,$3) as data',[action,'00000000-0000-4000-8000-'+String(user).padStart(12,'0'),payload])).rows[0].data;
+assert.equal((await call('list',1)).count,1);assert.equal((await call('list',2)).count,1);assert.equal((await call('list',3)).count,1);assert.equal((await call('list',4)).count,0);
+const notice=(await call('list',1)).items[0];await call('read',4,{id:notice.id});assert.equal((await call('list',1)).count,1);
+await call('read',1,{id:notice.id});assert.equal((await call('list',1)).count,0);assert.equal((await call('list',2)).count,1);await db.exec(sql);assert.equal((await call('list',1)).count,0);console.log('Reads persist per recipient, other users cannot acknowledge them; migration rerun does not resurrect reads: OK');
+await db.exec("update indisponibilites set status='accepted' where id='initial'");assert.equal((await call('list',2)).count,0);const answer=await call('list',3);assert.equal(answer.count,1);assert.equal(answer.items[0].kind,'accepted');await db.exec("update indisponibilites set status='accepted' where id='initial'");assert.equal((await call('list',3)).count,1);console.log('Response replaces pending alerts and idempotent status writes create no duplicates: OK');
+const cutoff=answer.through;await db.exec("update indisponibilites set status='refused' where id='initial'");await call('read_all',3,{through:cutoff});const unread=await call('list',3);assert.equal(unread.count,1);assert.equal(unread.items[0].kind,'refused');console.log('Mark-all leaves later notifications unread: OK');
+await db.exec("insert into indisponibilites values('new','worker2',current_date+31,'', 'pending',now())");assert.equal((await call('list',1)).count,1);await db.exec("delete from indisponibilites where id='new'");assert.equal((await call('list',1)).count,0);console.log('Withdrawal clears obsolete alerts: OK');
+await assert.rejects(()=>db.query("select public.internal_notifications_api('list',null,'{}')"));await db.exec("insert into rh_private.archive values('worker1')");await assert.rejects(()=>call('list',3));console.log('Missing session and archived users rejected: OK');await db.close();})().catch(e=>{console.error(e);process.exit(1)});
