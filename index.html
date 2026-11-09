@@ -829,6 +829,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
     <option>Soiree Boom</option><option>Polyvalent</option>
     <option style="color:#e91e63;font-weight:700">🍭 Sweety</option>
     <option style="color:#1565c0;font-weight:700">🏫 Ecole</option>
+    <option style="color:#424242;font-weight:700">Vacances / CP</option>
     <option style="color:#e53935;font-weight:700">🤒 Absent - Maladie</option>
     <option style="color:#ff6f00;font-weight:700">Absent - Injustifie</option>
   </select></div>
@@ -2586,6 +2587,7 @@ function openAddShiftFor(empId,dayIdx){
   var ds=getWeekDayDate(dayIdx);
   if(!isEmpActiveOnDate(e,ds)){showToast("Cette personne n'est pas sous contrat ce jour");return;}
   openAddShift(e.name,dayIdx);
+  if(isOnLeave(empId,ds))document.getElementById("shiftPoste").value="Vacances / CP";
 }
 function oES(idx,dayIdx){
   if(typeof dayIdx==="number") CDI=dayIdx;
@@ -2619,6 +2621,9 @@ async function saveShift(){
   if(!start||!end||rhMinutes(start,end)<=0){showToast("Horaires invalides : la fin doit suivre le début");return;}
   var eid=Object.keys(EMP).find(function(k){return EMP[k].name===name;});
   if(eid&&(!isEmpActiveOnDate(EMP[eid],date)||RH.archived.indexOf(eid)>=0)){showToast("Personne indisponible ou hors contrat");return;}
+  if(eid&&isOnLeave(eid,date)&&poste!=="Vacances / CP"){showToast("Congé enregistré : utiliser Vacances / CP");return;}
+  if(poste==="Vacances / CP"&&(!eid||!CGL.some(function(c){return c.empId===eid&&c.type==="CP"&&c.status==="accepted"&&c.from<=date&&c.to>=date;}))){showToast("Valider le congé payé avant de saisir ses heures");return;}
+  if(poste==="Vacances / CP"&&(PD[getDisplayedWeekDayIndex(date)]||[]).some(function(sh){return sh.name===name&&sh.poste==="Vacances / CP"&&(!old||sh.id!==old.id); })){showToast("Un créneau CP existe déjà ce jour");return;}
   var editing=ESIDX!==null,source=ESHIFT_ORIG_DAY===null?CDI:ESHIFT_ORIG_DAY,old=editing?(PD[source]||[])[ESIDX]:null;
   if(editing&&!old)return;
   var row={id:old&&old.id?old.id:"pl_"+Date.now(),date:date,emp_nom:name,heure_debut:start,heure_fin:end,poste:poste};
@@ -7612,8 +7617,8 @@ function renderPlanningWeek(){
       } else if(wIndispo){
         cells.push("<td style='padding:4px;background:#fff8e1;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:var(--orange)'>Indispo</span></td>");
         hasAnything=true;
-      } else if(wCP){
-        cells.push("<td style='padding:4px;background:#fff3e0;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:var(--orange)'>CP</span></td>");
+      } else if(wCP&&!dayShifts.length){
+        cells.push("<td class='plan-cell plan-active' style='background:#e4e6e9;text-align:center' onclick=\"openAddShiftFor(\'"+empId+"\',"+d+")\"><span style='font-size:10px;color:#424a54;font-weight:800'>CP · + heures</span></td>");
         hasAnything=true;
       } else if(dayShifts.length){
         hasAnything=true;
@@ -7668,7 +7673,7 @@ async function planningDrop(event,empId,targetDay){
   var emp=EMP[empId],date=getWeekDayDate(targetDay);
   if(!sh||!emp)return;
   if(!isEmpActiveOnDate(emp,date)){showToast("Cette personne n'est pas sous contrat ce jour");return;}
-  if(isOnLeave(empId,date)||INDISPO.some(function(x){return x.empId===empId&&x.date===date&&x.status==="accepted";})){
+  if((isOnLeave(empId,date)&&sh.poste!=="Vacances / CP")||(sh.poste==="Vacances / CP"&&!CGL.some(function(c){return c.empId===empId&&c.type==="CP"&&c.status==="accepted"&&c.from<=date&&c.to>=date;}))||INDISPO.some(function(x){return x.empId===empId&&x.date===date&&x.status==="accepted";})){
     showToast("Impossible : absence ou congé ce jour");return;
   }
   var copy=PLANNING_DRAG.copy||event.ctrlKey||event.altKey;
@@ -7692,6 +7697,7 @@ async function planningDrop(event,empId,targetDay){
 // ── PLANNING V2 : couleurs, heures semaine/mois et vue calendrier ────────────
 function planningStyleFor(poste){
   var p=(poste||"").toLowerCase();
+  if(p.indexOf("vacances / cp")>=0)return{bg:"#424a54",fg:"#ffffff",border:"#242b32",label:"Vacances / CP"};
   if(p.indexOf("absent")>=0||p.indexOf("maladie")>=0)return{bg:"#ffebee",fg:"#c62828",border:"#e53935",label:"Absence"};
   if(p.indexOf("sweety")>=0)return{bg:"#fce4ec",fg:"#ad1457",border:"#ec407a",label:"Sweety"};
   if(p.indexOf("ecole")>=0||p.indexOf("école")>=0)return{bg:"#e3f2fd",fg:"#0d47a1",border:"#1e88e5",label:"École"};
@@ -7703,7 +7709,7 @@ function planningStyleFor(poste){
   return{bg:"#eef4ee",fg:"#1a4a2e",border:"#7cb987",label:"Autre"};
 }
 function planningLegend(){
-  var items=["🍭 Sweety","🏫 Ecole","Accueil / Caisse","Snack / Cuisine","Anniversaires","Soiree Boom","Absent - Maladie"];
+  var items=["Vacances / CP","🍭 Sweety","🏫 Ecole","Accueil / Caisse","Snack / Cuisine","Anniversaires","Soiree Boom","Absent - Maladie"];
   return "<div class='planning-legend'>"+items.map(function(p){var s=planningStyleFor(p);return "<span style='background:"+s.bg+";color:"+s.fg+"'>"+s.label+"</span>";}).join("")+"</div>";
 }
 function ymdLocal(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -7857,7 +7863,7 @@ async function renderPlanningWeek(){
   var html=(CU&&CU.role==="gerant"?"<div style='font-size:11px;color:var(--tm);background:#e8f5e9;border-radius:8px;padding:7px 10px;margin-bottom:8px'>Cliquez pour ajouter ou modifier · glissez pour déplacer · Ctrl + glisser pour copier.</div>":"")+planningLegend()+"<div class='plan-note-toolbar'><b>📝 Notes de la semaine</b><button class='plan-note-add' style='width:auto;padding:4px 10px' onclick='renderPlanningWeek()'>Actualiser</button></div>"+(notes===null?"<div style='color:var(--red);font-size:12px;padding:8px'>Notes indisponibles : vérifiez la connexion ou les droits Supabase.</div>":"")+"<div class='plan-table-wrap'><table class='plan-week-table'>";
   html+="<tr><th style='padding:6px;background:var(--g1);color:#fff;text-align:left;min-width:104px'>Employé</th>";for(var d=0;d<7;d++){var date=new Date(monday);date.setDate(monday.getDate()+d);var ds=ymdLocal(date),isToday=ds===tod();html+="<th style='padding:6px;background:"+(isToday?"var(--g2)":"var(--g1)")+";color:#fff;text-align:center;min-width:76px'>"+days[d]+"<br><span style='font-size:9px;opacity:.8'>"+date.getDate()+"/"+(date.getMonth()+1)+"</span>"+(CU&&CU.role==="gerant"?"<br><span onclick=\"event.stopPropagation();CDI="+d+";openAddShift()\" style='cursor:pointer;font-size:11px;background:rgba(255,255,255,.2);border-radius:4px;padding:1px 5px'>+</span>":"")+"</th>";}html+="</tr>";
   html+=planningNotesRow(monday,PLAN_NOTES);
-  empIds.forEach(function(empId){var emp=EMP[empId],cells=[];for(var d=0;d<7;d++){var dayShifts=(PD[d]||[]).filter(function(sh){return sh.name===emp.name;}),wDate=new Date(monday);wDate.setDate(monday.getDate()+d);var wDs=ymdLocal(wDate),activeThisDay=isEmpActiveOnDate(emp,wDs),wIndispo=INDISPO.some(function(x){return x.empId===empId&&x.date===wDs&&x.status==="accepted";}),wCP=isOnLeave(empId,wDs);if(!activeThisDay)cells.push("<td class='plan-cell plan-inactive' title='Hors contrat'></td>");else if(wIndispo)cells.push("<td style='padding:4px;background:#ede7f6;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:#6a1b9a;font-weight:800'>Indispo</span></td>");else if(wCP)cells.push("<td style='padding:4px;background:#fff3e0;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:var(--orange);font-weight:800'>CP</span></td>");else if(dayShifts.length){var cell="<td class='plan-cell plan-active' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\">";dayShifts.forEach(function(sh){var style=planningStyleFor(sh.poste),shIdx=(PD[d]||[]).indexOf(sh);cell+="<div class='plan-shift-block' draggable='true' title='Cliquer pour modifier · glisser pour déplacer' onclick=\"event.stopPropagation();oES("+shIdx+","+d+")\" ondragstart=\"planningDragStart(event,"+d+","+shIdx+")\" style='background:"+style.bg+";color:"+style.fg+";border-left-color:"+style.border+"'>"+(sh.start&&sh.end?sh.start+"-"+sh.end:"")+"<br><span style='font-weight:700'>"+(sh.poste||"")+"</span></div>";});cells.push(cell+"</td>");}else cells.push("<td class='plan-cell plan-active' title='Ajouter un créneau' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\"></td>");}
+  empIds.forEach(function(empId){var emp=EMP[empId],cells=[];for(var d=0;d<7;d++){var dayShifts=(PD[d]||[]).filter(function(sh){return sh.name===emp.name;}),wDate=new Date(monday);wDate.setDate(monday.getDate()+d);var wDs=ymdLocal(wDate),activeThisDay=isEmpActiveOnDate(emp,wDs),wIndispo=INDISPO.some(function(x){return x.empId===empId&&x.date===wDs&&x.status==="accepted";}),wCP=isOnLeave(empId,wDs);if(!activeThisDay)cells.push("<td class='plan-cell plan-inactive' title='Hors contrat'></td>");else if(wIndispo)cells.push("<td style='padding:4px;background:#ede7f6;text-align:center;border-bottom:1px solid #f5f5f5'><span style='font-size:10px;color:#6a1b9a;font-weight:800'>Indispo</span></td>");else if(wCP&&!dayShifts.length)cells.push("<td class='plan-cell plan-active' style='background:#e4e6e9;text-align:center' onclick=\"openAddShiftFor(\'"+empId+"\',"+d+")\"><span style='font-size:10px;color:#424a54;font-weight:800'>CP · + heures</span></td>");else if(dayShifts.length){var cell="<td class='plan-cell plan-active' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\">";dayShifts.forEach(function(sh){var style=planningStyleFor(sh.poste),shIdx=(PD[d]||[]).indexOf(sh);cell+="<div class='plan-shift-block' draggable='true' title='Cliquer pour modifier · glisser pour déplacer' onclick=\"event.stopPropagation();oES("+shIdx+","+d+")\" ondragstart=\"planningDragStart(event,"+d+","+shIdx+")\" style='background:"+style.bg+";color:"+style.fg+";border-left-color:"+style.border+"'>"+(sh.start&&sh.end?sh.start+"-"+sh.end:"")+"<br><span style='font-weight:700'>"+(sh.poste||"")+"</span></div>";});cells.push(cell+"</td>");}else cells.push("<td class='plan-cell plan-active' title='Ajouter un créneau' onclick=\"openAddShiftFor('"+empId+"',"+d+")\" ondragover='planningDragOver(event)' ondragleave='planningDragLeave(event)' ondrop=\"planningDrop(event,'"+empId+"',"+d+")\"></td>");}
     var wh=hoursFromShifts(weekRows,emp.name),weekTarget=getWeekTargetForEmp(empId,monday),mh=hoursFromShifts(monthRows,emp.name),monthTarget=getHMoisForEmp(empId,monthRef.getFullYear(),monthRef.getMonth()+1);html+="<tr><td class='plan-emp-cell'><div style='display:flex;align-items:center;gap:5px'><div class='plan-emp-name' style='flex:1'>"+emp.name.split(" ")[0]+"</div>"+(CU&&CU.role==="gerant"?"<button type='button' title='Appliquer un planning type' onclick=\"event.stopPropagation();openEmployeeTplanning('"+empId+"')\" style='border:0;background:#e8f5e9;color:var(--g1);border-radius:7px;min-width:30px;height:30px;font-size:15px;cursor:pointer;padding:0'>⚡</button>":"")+"</div><div class='plan-emp-hours'>Semaine : "+fmtH(wh)+" / "+fmtH(weekTarget)+" h<br>"+MS[monthRef.getMonth()]+" : "+fmtH(mh)+" / "+fmtH(monthTarget)+" h</div><div data-rh-emp='"+empId+"'></div></td>"+cells.join("")+"</tr>";});el.innerHTML=html+"</table></div>";rhPaintCounters();
 }
 async function renderPlanningMonth(){
