@@ -838,6 +838,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
   <button class="cnclbtn" id="shiftDeleteBtn" style="display:none;color:var(--red);border-color:#ef9a9a" onclick="deleteCurrentShift()">&#x1F5D1; Supprimer ce cr&eacute;neau</button>
   <button class="cnclbtn" onclick="closeModal('mShift')">Annuler</button>
 </div></div>
+<div class="mo" id="mCPAjust" onclick="if(event.target===this)closeModal('mCPAjust')"><div class="ms"><div class="mh"></div><div class="mtitle" id="cpAjustTitle">Ajuster les congés payés</div><div class="fr"><label>Total de jours CP acquis souhaité</label><input id="cpAjustVal" type="number" min="0" max="1000" step="0.5" inputmode="decimal"></div><div class="fr"><label>Motif (facultatif)</label><input id="cpAjustNote" placeholder="Régularisation, report..."></div><button class="vbtn" onclick="saveCPAjust()">Enregistrer</button><button class="cnclbtn" onclick="closeModal('mCPAjust')">Annuler</button></div></div>
 <div class="mo" id="mConge" onclick="if(event.target===this)closeModal('mConge')"><div class="ms">
   <div class="mh"></div><div class="mtitle">Poser des conges</div>
   <div id="rhShiftPreview" style="padding:10px;background:#e8f5e9;border-radius:10px;font-size:12px"></div><div class="fr"><label>Employ&eacute;(e)</label><select id="cgEmp"></select></div>
@@ -7414,7 +7415,8 @@ function openCPAjust(empId){
 async function saveCPAjust(){
   if(!(CU&&CU.role==="gerant")){showToast("Accès réservé au gérant");return;}
   var e = EMP[EDIT_CP_EMP_ID]; if(!e) return;
-  var totalVoulu = parseFloat(document.getElementById("cpAjustVal").value||0);
+  var totalVoulu = Number(document.getElementById("cpAjustVal").value);
+  if(!Number.isFinite(totalVoulu)||totalVoulu<0||totalVoulu>1000){showToast("Nombre de jours invalide");return;}
   var ct=e.contract||e.ct||"";
   var autoCP = ct==="CDI" || ct==="Alternance";
   var ajust;
@@ -7487,30 +7489,6 @@ async function refreshAllData(){
     showToast("Erreur actualisation");
   }
   if(btn){ btn.style.opacity="1"; btn.style.pointerEvents="all"; }
-}
-var EDIT_CP_EMP_ID = null;
-function openCPAjust(empId){
-  if(!(CU&&CU.role==="gerant")){showToast("Accès réservé au gérant");return;}
-  var e = EMP[empId]; if(!e) return;
-  EDIT_CP_EMP_ID = empId;
-  var t=document.getElementById("cpAjustTitle");
-  if(t) t.textContent = "Ajuster CP — " + e.name.split(" ")[0];
-  var v=document.getElementById("cpAjustVal");
-  if(v) v.value = e.cp_ajust||0;
-  var n=document.getElementById("cpAjustNote");
-  if(n) n.value = "";
-  openModal("mCPAjust");
-}
-async function saveCPAjust(){
-  if(!(CU&&CU.role==="gerant")){showToast("Accès réservé au gérant");return;}
-  var e = EMP[EDIT_CP_EMP_ID]; if(!e) return;
-  var val = parseFloat(document.getElementById("cpAjustVal").value||0);
-  e.cp_ajust = val;
-  await supaPatch("employes",{cp_ajust:val},"id=eq."+EDIT_CP_EMP_ID);
-  logActivity("Ajustement CP",e.name+" : "+val+"j","rh");
-  closeModal("mCPAjust");
-  renderHConges();
-  showToast("CP ajusté : "+(val>=0?"+":"")+val+"j pour "+e.name.split(" ")[0]);
 }
 // ── HEURES ANNEE ──────────────────────────────────────────────────────────────
 var MOIS_PAYES = []; // {id, emp_id, annee, mois, h_payees, verrouille, note}
