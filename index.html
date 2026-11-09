@@ -2911,7 +2911,68 @@ function saveConge(){
   closeModal("mConge");renderHConges();
   showToast(joursOuvres(from,to)+" jours enregistres");
 }
-function updCg(id,st){var c=CGL.find(function(x){return x.id===id;});if(c){c.status=st;dbUpdateConge(id,st);logActivity('Conge '+st,c.empId+' du '+c.from+' au '+c.to,'conge');renderHConges();showToast(st==="accepted"?"Conge accepte":"Conge refuse");}}
+// Synchronisation des congés acceptés avec le planning, sans modifier les heures déjà travaillées.
+async function syncAcceptedCP(c){
+  if(!c||c.type!=="CP"||c.status!=="accepted")return true;
+  var e=EMP[c.empId];if(!e)return false;
+  var existing=await supaGet("planning","date=gte."+c.from+"&date=lte."+c.to+"&limit=2000");
+  if(existing===null)return false;
+  var current=new Date(c.from+"T12:00:00"),last=new Date(c.to+"T12:00:00"),ok=true;
+  while(current<=last){
+    var ds=ymdLocal(current),day=current.getDay();
+    if(day!==0&&isEmpActiveOnDate(e,ds)){
+      var rows=existing.filter(function(r){return r.date===ds&&r.emp_nom===e.name;});
+      var cpRows=rows.filter(function(r){return r.poste==="Vacances / CP";});
+      if(!cpRows.length){
+        // Priorité aux heures déjà prévues dans le planning. Sinon, base contractuelle.
+        var scheduled=rows.filter(function(r){return (r.poste||"").indexOf("Absent")<0;});
+        var hours=scheduled.reduce(function(n,r){return n+calcH(r.heure_debut,r.heure_fin);},0);
+        if(!hours){
+          var effective=rhEffective(e,ds),week=parseFloat(effective.hW)||0;
+          if(isCDIAnnualise(effective))hours=week/5;
+          else {
+            var monthHours=getHMoisForEmp(c.empId,current.getFullYear(),current.getMonth()+1);
+            // Répartition indicative sur les jours ouvrés du mois.
+            var workdays=0,days=new Date(current.getFullYear(),current.getMonth()+1,0).getDate();
+            for(var d=1;d<=days;d++){var check=new Date(current.getFullYear(),current.getMonth(),d);if(check.getDay()!==0&&isEmpActiveOnDate(e,ymdLocal(check)))workdays++;}
+            hours=workdays?monthHours/workdays:0;
+          }
+        }
+        hours=Math.round(hours*60)/60;
+        if(hours>0){
+          // Retirer les créneaux de travail prévus pour éviter tout double comptage.
+          for(var i=0;i<scheduled.length;i++){
+            if(await supaDelete("planning","id=eq."+scheduled[i].id)===null){ok=false;break;}
+          }
+          if(ok){
+            var minutes=Math.round(hours*60),start="09:00",endMin=540+minutes;
+            // Les longues journées sont scindées pour rester dans une plage horaire valide.
+            var chunks=[];while(minutes>0){var part=Math.min(minutes,720);chunks.push(part);minutes-=part;}
+            for(var j=0;j<chunks.length;j++){
+              var startMin=j===0?540:0,endMinutes=startMin+chunks[j];
+              var row={id:"cp_"+c.id+"_"+ds+"_"+j,date:ds,emp_nom:e.name,heure_debut:String(Math.floor(startMin/60)).padStart(2,"0")+":"+String(startMin%60).padStart(2,"0"),heure_fin:String(Math.floor(endMinutes/60)).padStart(2,"0")+":"+String(endMinutes%60).padStart(2,"0"),poste:"Vacances / CP"};
+              if(await supaPost("planning",row)===null){ok=false;break;}
+            }
+          }
+        }
+      }
+    }
+    current.setDate(current.getDate()+1);
+  }
+  invalidatePlanningCache();
+  await changeWeek(0);
+  return ok;
+}
+async function updCg(id,st){
+  var c=CGL.find(function(x){return x.id===id;});if(!c)return;
+  var saved=await supaPatch("conges",{status:st},"id=eq."+id);
+  if(saved===null){showToast("Validation non enregistrée");return;}
+  c.status=st;
+  var synced=st==="accepted"?await syncAcceptedCP(c):true;
+  logActivity("Conge "+st,c.empId+" du "+c.from+" au "+c.to,"conge");
+  renderHConges();
+  showToast(!synced?"CP validé : vérifiez les heures du planning":st==="accepted"?"Congé validé et planning mis à jour":"Congé refusé");
+}
 function delCg(id){CGL=CGL.filter(function(c){return c.id!==id;});dbDeleteConge(id);renderHConges();showToast("Conge supprime");}
 
 // ── RH ────────────────────────────────────────────────────────────────────────
