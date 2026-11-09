@@ -2107,7 +2107,7 @@ function cpAcq(emp){
   // CDD, Extra, Stage, SASU, Partenaire: saisie manuelle uniquement
   return Math.round((emp.cp_ajust||0)*10)/10;
 }
-function cpPos(eid){return CGL.filter(function(c){return c.empId===eid&&c.type==="CP"&&c.status!=="refused";}).reduce(function(a,c){return a+joursOuvres(c.from,c.to);},0);}
+function cpPos(eid){return CGL.filter(function(c){return c.empId===eid&&c.type==="CP"&&c.status==="accepted";}).reduce(function(a,c){return a+joursOuvres(c.from,c.to);},0);}
 function hSem(name){
   // Sum hours for currently displayed week in PD
   var t=0;
@@ -2862,10 +2862,11 @@ function renderHConges(){
       +"<div style=\"font-size:10px;color:var(--tl)\">Depuis "+e.since+"</div>"
       +ajustBtn+"</div>"
       +"<div style=\"text-align:right\"><div style=\"font-size:18px;font-weight:900;color:"+col+"\">"+rest+"j</div>"
-      +"<div style=\"font-size:10px;color:var(--tl)\">"+acq+"j acquis - "+pos+"j pos&eacute;s"+(e.cp_ajust?"+" +e.cp_ajust+"j ajust&eacute;":"")+"</div></div></div>";
+      +"<div style=\"font-size:10px;color:var(--tl)\">"+acq+"j acquis - "+pos+"j valid&eacute;s"+(e.cp_ajust?"+" +e.cp_ajust+"j ajust&eacute;":"")+"</div></div></div>";
   });
   var myEmpId=Object.keys(EMP).find(function(k){return EMP[k].name===(CU?CU.name:"");});
   var isGer=CU&&CU.role==="gerant";
+  sold+="<div style=\"font-size:11px;color:var(--tl);padding:6px\">Demandes en attente : "+CGL.filter(function(c){return c.type==="CP"&&c.status==="pending";}).reduce(function(n,c){return n+joursOuvres(c.from,c.to);},0)+" jours (non déduits)</div>";
   var sorted=[].concat(isGerCG?CGL:CGL.filter(function(c){return c.empId===myEmpIdCG;})).sort(function(a,b){return a.from.localeCompare(b.from);});
   var icons={accepted:"OK",pending:"...",refused:"X"};
   var lbl={accepted:"Accepte",pending:"En attente",refused:"Refuse"};
@@ -2911,70 +2912,102 @@ function saveConge(){
   closeModal("mConge");renderHConges();
   showToast(joursOuvres(from,to)+" jours enregistres");
 }
-// Synchronisation des congés acceptés avec le planning, sans modifier les heures déjà travaillées.
-async function syncAcceptedCP(c){
-  if(!c||c.type!=="CP"||c.status!=="accepted")return true;
-  var e=EMP[c.empId];if(!e)return false;
-  var existing=await supaGet("planning","date=gte."+c.from+"&date=lte."+c.to+"&limit=2000");
-  if(existing===null)return false;
-  var current=new Date(c.from+"T12:00:00"),last=new Date(c.to+"T12:00:00"),ok=true;
-  while(current<=last){
-    var ds=ymdLocal(current),day=current.getDay();
-    if(day!==0&&isEmpActiveOnDate(e,ds)){
-      var rows=existing.filter(function(r){return r.date===ds&&r.emp_nom===e.name;});
-      var cpRows=rows.filter(function(r){return r.poste==="Vacances / CP";});
-      if(!cpRows.length){
-        // Priorité aux heures déjà prévues dans le planning. Sinon, base contractuelle.
-        var scheduled=rows.filter(function(r){return (r.poste||"").indexOf("Absent")<0;});
-        var hours=scheduled.reduce(function(n,r){return n+calcH(r.heure_debut,r.heure_fin);},0);
-        if(!hours){
-          var effective=rhEffective(e,ds),week=parseFloat(effective.hW)||0;
-          if(isCDIAnnualise(effective))hours=week/5;
-          else {
-            var monthHours=getHMoisForEmp(c.empId,current.getFullYear(),current.getMonth()+1);
-            // Répartition indicative sur les jours ouvrés du mois.
-            var workdays=0,days=new Date(current.getFullYear(),current.getMonth()+1,0).getDate();
-            for(var d=1;d<=days;d++){var check=new Date(current.getFullYear(),current.getMonth(),d);if(check.getDay()!==0&&isEmpActiveOnDate(e,ymdLocal(check)))workdays++;}
-            hours=workdays?monthHours/workdays:0;
-          }
-        }
-        hours=Math.round(hours*60)/60;
-        if(hours>0){
-          // Retirer les créneaux de travail prévus pour éviter tout double comptage.
-          for(var i=0;i<scheduled.length;i++){
-            if(await supaDelete("planning","id=eq."+scheduled[i].id)===null){ok=false;break;}
-          }
-          if(ok){
-            var minutes=Math.round(hours*60),start="09:00",endMin=540+minutes;
-            // Les longues journées sont scindées pour rester dans une plage horaire valide.
-            var chunks=[];while(minutes>0){var part=Math.min(minutes,720);chunks.push(part);minutes-=part;}
-            for(var j=0;j<chunks.length;j++){
-              var startMin=j===0?540:0,endMinutes=startMin+chunks[j];
-              var row={id:"cp_"+c.id+"_"+ds+"_"+j,date:ds,emp_nom:e.name,heure_debut:String(Math.floor(startMin/60)).padStart(2,"0")+":"+String(startMin%60).padStart(2,"0"),heure_fin:String(Math.floor(endMinutes/60)).padStart(2,"0")+":"+String(endMinutes%60).padStart(2,"0"),poste:"Vacances / CP"};
-              if(await supaPost("planning",row)===null){ok=false;break;}
-            }
-          }
-        }
-      }
-    }
-    current.setDate(current.getDate()+1);
+// CP : validation explicite, sans estimation silencieuse ni suppression de travail existant.
+function cpDayList(c){
+  var out=[],d=new Date(c.from+"T12:00:00"),end=new Date(c.to+"T12:00:00");
+  while(d<=end){var ds=ymdLocal(d);if(d.getDay()!==0&&isEmpActiveOnDate(EMP[c.empId],ds))out.push(ds);d.setDate(d.getDate()+1);}
+  return out;
+}
+function cpRowId(c,day){return "cp_"+c.id+"_"+day+"_0";}
+function cpHourSplit(rows){
+  return (rows||[]).reduce(function(a,r){
+    var h=calcH(r.heure_debut||r.start,r.heure_fin||r.end);
+    if((r.poste||"").toLowerCase()==="vacances / cp")a.cp+=h;
+    else if((r.poste||"").toLowerCase().indexOf("absent")<0)a.work+=h;
+    return a;
+  },{work:0,cp:0});
+}
+async function cpReview(id){
+  if(!CU||CU.role!=="gerant"){showToast("Validation réservée à la direction");return;}
+  var c=CGL.find(function(x){return x.id===id;});if(!c||c.type!=="CP"||!EMP[c.empId])return;
+  var days=cpDayList(c),rows=await supaGet("planning","date=gte."+c.from+"&date=lte."+c.to+"&limit=2500");
+  if(!rows){showToast("Planning indisponible : aucune validation");return;}
+  var e=EMP[c.empId],choices=[],total=0;
+  for(var i=0;i<days.length;i++){
+    var ds=days[i],existing=rows.filter(function(x){return x.date===ds&&((x.emp_id&&x.emp_id===c.empId)||x.emp_nom===e.name);});
+    var cp=existing.filter(function(x){return x.poste==="Vacances / CP";});
+    var work=existing.filter(function(x){return x.poste!=="Vacances / CP"&&(x.poste||"").toLowerCase().indexOf("absent")<0;});
+    if(cp.some(function(x){return x.id!==cpRowId(c,ds)})){showToast("CP existant à vérifier le "+ds);return;}
+    var proposed=cp.length?cpHourSplit(cp).cp:cpHourSplit(work).work;
+    var entered=prompt("CP "+e.name+" — "+ds+"\\nHeures à créditer pour cette journée (0 si repos) : ",proposed?String(Math.round(proposed*100)/100):"");
+    if(entered===null)return;
+    if(!entered.trim()){showToast("Renseigner chaque journée, même 0 h");return;}
+    var h=Number(entered.replace(",","."));
+    if(!Number.isFinite(h)||h<0||h>12||Math.abs(h*60-Math.round(h*60))>0.01){showToast("Saisir entre 0 et 12 h, par minute");return;}
+    choices.push({date:ds,hours:h,work:work,cp:cp});total+=h;
   }
-  invalidatePlanningCache();
-  await changeWeek(0);
-  return ok;
+  if(!confirm("Confirmer "+e.name+" : "+days.length+" jour(s) de CP, "+Math.round(total*100)/100+" h créditées ?\\nLes créneaux de travail prévus seront remplacés par les CP."))return;
+  // Sauvegarde des créneaux existants avant toute écriture pour permettre une restauration.
+  var backup={};choices.forEach(function(x){backup[x.date]=x.work.map(function(w){return {id:w.id,date:w.date,emp_nom:w.emp_nom,emp_id:w.emp_id||null,heure_debut:w.heure_debut,heure_fin:w.heure_fin,poste:w.poste,contract_id:w.contract_id||null};});});
+  // Le journal de restauration est stocké sur la demande, pas sur un stockage local volatil.
+  var note=c.note||"",marker="\\n[CP_BACKUP_V1]";
+  if(note.indexOf(marker)>=0){showToast("Demande déjà traitée : vérifier avant modification");return;}
+  var stored=await supaPatch("conges",{note:note+marker+JSON.stringify(backup)},"id=eq."+encodeURIComponent(c.id));
+  if(!stored||!stored.length){showToast("Sauvegarde impossible, aucun planning modifié");return;}
+  for(var j=0;j<choices.length;j++){
+    var x=choices[j],rowId=cpRowId(c,x.date);
+    for(var k=0;k<x.work.length;k++){
+      if(await supaDelete("planning","id=eq."+encodeURIComponent(x.work[k].id))===null){showToast("Erreur : vérifier le planning avant de recommencer");return;}
+    }
+    for(var k2=0;k2<x.cp.length;k2++){
+      if(await supaDelete("planning","id=eq."+encodeURIComponent(x.cp[k2].id))===null){showToast("Erreur CP : vérifier le planning");return;}
+    }
+    if(x.hours>0){
+      var minutes=Math.round(x.hours*60),end=540+minutes;
+      var row={id:rowId,date:x.date,emp_nom:e.name,emp_id:c.empId,heure_debut:"09:00",heure_fin:String(Math.floor(end/60)).padStart(2,"0")+":"+String(end%60).padStart(2,"0"),poste:"Vacances / CP"};
+      if(await supaPost("planning",row)===null){showToast("Erreur création CP : vérifier le planning");return;}
+    }
+  }
+  var accepted=await supaPatch("conges",{status:"accepted"},"id=eq."+encodeURIComponent(c.id));
+  if(!accepted||!accepted.length){showToast("Heures créées mais validation non confirmée : vérification nécessaire");return;}
+  c.status="accepted";c.note=note+marker+JSON.stringify(backup);
+  invalidatePlanningCache();renderHConges();await changeWeek(0);
+  logActivity("CP validés",e.name+" "+c.from+" - "+c.to+" : "+total+" h","conge");
+  showToast("CP validés : "+Math.round(total*100)/100+" h");
 }
 async function updCg(id,st){
+  if(!CU||CU.role!=="gerant")return;
   var c=CGL.find(function(x){return x.id===id;});if(!c)return;
-  var saved=await supaPatch("conges",{status:st},"id=eq."+id);
-  if(saved===null){showToast("Validation non enregistrée");return;}
-  c.status=st;
-  var synced=st==="accepted"?await syncAcceptedCP(c):true;
-  logActivity("Conge "+st,c.empId+" du "+c.from+" au "+c.to,"conge");
-  renderHConges();
-  showToast(!synced?"CP validé : vérifiez les heures du planning":st==="accepted"?"Congé validé et planning mis à jour":"Congé refusé");
+  if(st==="accepted"&&c.type==="CP"){await cpReview(id);return;}
+  if(c.status==="accepted"){showToast("Congé validé : utiliser la procédure d'annulation");return;}
+  var result=await supaPatch("conges",{status:st},"id=eq."+encodeURIComponent(id));
+  if(!result||!result.length)return;
+  c.status=st;renderHConges();showToast("Demande mise à jour");
 }
-function delCg(id){CGL=CGL.filter(function(c){return c.id!==id;});dbDeleteConge(id);renderHConges();showToast("Conge supprime");}
-
+async function delCg(id){
+  if(!CU||CU.role!=="gerant"){showToast("Suppression réservée à la direction");return;}
+  var c=CGL.find(function(x){return x.id===id;});if(!c)return;
+  if(!confirm("Supprimer cette demande de congé ?"))return;
+  if(c.status==="accepted"&&c.type==="CP"){
+    var marker="\\n[CP_BACKUP_V1]",at=(c.note||"").indexOf(marker);
+    if(at<0){showToast("Ancien CP : restauration automatique impossible. Vérification manuelle nécessaire.");return;}
+    var backup;try{backup=JSON.parse(c.note.slice(at+marker.length));}catch(e){showToast("Sauvegarde CP illisible");return;}
+    var days=cpDayList(c);
+    for(var i=0;i<days.length;i++){
+      var ds=days[i],current=await supaGet("planning","id=eq."+encodeURIComponent(cpRowId(c,ds)));
+      if(!current){showToast("Lecture planning impossible");return;}
+      if(current.length&&await supaDelete("planning","id=eq."+encodeURIComponent(cpRowId(c,ds)))===null)return;
+      var restore=backup[ds]||[];
+      for(var j=0;j<restore.length;j++){
+        var row=restore[j];if(row.emp_id===null)delete row.emp_id;if(row.contract_id===null)delete row.contract_id;
+        if(await supaPost("planning",row)===null){showToast("Restauration incomplète : intervention nécessaire");return;}
+      }
+    }
+  }
+  if(await supaDelete("conges","id=eq."+encodeURIComponent(id))===null)return;
+  CGL=CGL.filter(function(x){return x.id!==id;});
+  invalidatePlanningCache();renderHConges();await changeWeek(0);showToast("Demande supprimée");
+}
 // ── RH ────────────────────────────────────────────────────────────────────────
 function renderEmpList(){
   var el=document.getElementById("empListEl");if(!el)return;var now=new Date(),dow=(now.getDay()+6)%7,monday=new Date(now);monday.setDate(now.getDate()-dow),weekStart=ymdLocal(monday),weekEndD=new Date(monday);weekEndD.setDate(monday.getDate()+6),weekEnd=ymdLocal(weekEndD);
