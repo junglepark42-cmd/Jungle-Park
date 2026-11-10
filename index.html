@@ -2112,7 +2112,7 @@ function cpAutoAcquired(emp){
   return 0;
 }
 function cpAcq(emp){return emp?Math.round((cpAutoAcquired(emp)+cpAdjustmentValue(emp.cp_ajust))*10)/10:0;}
-function cpPos(eid){return CGL.filter(function(c){return c.empId===eid&&c.type==="CP"&&c.status==="accepted";}).reduce(function(a,c){return a+joursOuvres(c.from,c.to);},0);}
+function cpPos(eid){return CGL.filter(function(c){return c.empId===eid&&c.type==="CP"&&c.status==="accepted";}).reduce(function(a,c){var m=(c.note||"").match(/\[CP_DAYS_V2\](\{[^\n]*\})/);if(m){try{var v=JSON.parse(m[1]);if(Array.isArray(v.days))return a+v.days.filter(function(d){return d.type==="CP";}).length;}catch(e){}}return a+joursOuvres(c.from,c.to);},0);}
 function hSem(name){
   // Sum hours for currently displayed week in PD
   var t=0;
@@ -2937,26 +2937,51 @@ async function cpReview(id){
   var c=CGL.find(function(x){return x.id===id;});if(!c||c.type!=="CP"||!EMP[c.empId])return;
   var days=cpDayList(c),rows=await supaGet("planning","date=gte."+c.from+"&date=lte."+c.to+"&limit=2500");
   if(!rows){showToast("Planning indisponible : aucune validation");return;}
-  var e=EMP[c.empId],choices=[],total=0;
+  var e=EMP[c.empId],choices=[],total=0,cpCount=0;
+  var overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:12px";
+  var card=document.createElement("div");card.style.cssText="background:#fff;border-radius:16px;padding:18px;max-width:520px;width:100%;max-height:88vh;overflow:auto;font-family:Nunito,sans-serif";
+  var heading=document.createElement("h3");heading.textContent="Valider les congés — "+e.name;heading.style.marginBottom="8px";card.appendChild(heading);
+  var hint=document.createElement("p");hint.textContent="Choisir CP ou repos hebdomadaire pour chaque journée. Un repos ne décompte aucun CP et vaut 0 heure.";hint.style.cssText="font-size:12px;margin-bottom:12px";card.appendChild(hint);
   for(var i=0;i<days.length;i++){
     var ds=days[i],existing=rows.filter(function(x){return x.date===ds&&((x.emp_id&&x.emp_id===c.empId)||x.emp_nom===e.name);});
     var cp=existing.filter(function(x){return x.poste==="Vacances / CP";});
     var work=existing.filter(function(x){return x.poste!=="Vacances / CP"&&(x.poste||"").toLowerCase().indexOf("absent")<0;});
     if(cp.some(function(x){return x.id!==cpRowId(c,ds)})){showToast("CP existant à vérifier le "+ds);return;}
     var proposed=cp.length?cpHourSplit(cp).cp:cpHourSplit(work).work;
-    var entered=prompt("CP "+e.name+" — "+ds+"\\nHeures à créditer pour cette journée (0 si repos) : ",proposed?String(Math.round(proposed*100)/100):"");
-    if(entered===null)return;
-    if(!entered.trim()){showToast("Renseigner chaque journée, même 0 h");return;}
-    var h=Number(entered.replace(",","."));
-    if(!Number.isFinite(h)||h<0||h>12||Math.abs(h*60-Math.round(h*60))>0.01){showToast("Saisir entre 0 et 12 h, par minute");return;}
-    choices.push({date:ds,hours:h,work:work,cp:cp});total+=h;
+    var line=document.createElement("div");line.style.cssText="display:flex;align-items:center;gap:8px;margin:7px 0";
+    var dateLabel=document.createElement("span");dateLabel.textContent=ds;dateLabel.style.cssText="font-size:12px;min-width:92px";line.appendChild(dateLabel);
+    var sel=document.createElement("select");sel.style.cssText="flex:1;min-width:0;padding:8px;border:1px solid #ddd;border-radius:7px";
+    [["CP","Congé payé"],["REPOS","Repos hebdomadaire"]].forEach(function(pair){var op=document.createElement("option");op.value=pair[0];op.textContent=pair[1];sel.appendChild(op);});
+    var inp=document.createElement("input");inp.type="number";inp.min="0";inp.max="12";inp.step="any";inp.value=proposed?String(Math.round(proposed*100)/100):"0";inp.style.cssText="width:65px;padding:8px;border:1px solid #ddd;border-radius:7px";
+    var choice={date:ds,work:work,cp:cp,select:sel,input:inp};choices.push(choice);
+    sel.onchange=function(c){return function(){if(c.select.value==="REPOS"){c.input.value="0";c.input.disabled=true;}else c.input.disabled=false;};}(choice);
+    line.appendChild(sel);line.appendChild(inp);card.appendChild(line);
   }
-  if(!confirm("Confirmer "+e.name+" : "+days.length+" jour(s) de CP, "+Math.round(total*100)/100+" h créditées ?\\nLes créneaux de travail prévus seront remplacés par les CP."))return;
+  var buttons=document.createElement("div");buttons.style.cssText="display:flex;gap:8px;margin-top:16px";
+  var cancel=document.createElement("button");cancel.textContent="Annuler";cancel.style.cssText="flex:1;padding:12px;border:0;border-radius:8px";
+  var ok=document.createElement("button");ok.textContent="Valider la période";ok.style.cssText="flex:2;padding:12px;border:0;border-radius:8px;background:#2d7a4f;color:white;font-weight:bold";
+  buttons.appendChild(cancel);buttons.appendChild(ok);card.appendChild(buttons);overlay.appendChild(card);document.body.appendChild(overlay);
+  var confirmed=await new Promise(function(resolve){
+    cancel.onclick=function(){overlay.remove();resolve(false);};
+    ok.onclick=function(){
+      total=0;cpCount=0;
+      for(var k=0;k<choices.length;k++){
+        var x=choices[k];x.type=x.select.value;x.hours=x.type==="REPOS"?0:Number(x.input.value.replace(",","."));
+        if(!Number.isFinite(x.hours)||x.hours<0||x.hours>12||Math.abs(x.hours*60-Math.round(x.hours*60))>0.02){showToast("Heures invalides le "+x.date);return;}
+        if(x.type==="CP"){cpCount++;total+=x.hours;}
+        if(x.type==="REPOS"&&x.work.length){showToast("Repos avec travail planifié le "+x.date+" : corriger le planning avant validation");return;}
+      }
+      if(!confirm(cpCount+" jours CP, "+(days.length-cpCount)+" repos, "+Math.round(total*100)/100+" heures créditées. Confirmer ?"))return;
+      overlay.remove();resolve(true);
+    };
+  });
+  if(!confirmed)return;
   // Sauvegarde des créneaux existants avant toute écriture pour permettre une restauration.
   var backup={};choices.forEach(function(x){backup[x.date]=x.work.map(function(w){return {id:w.id,date:w.date,emp_nom:w.emp_nom,emp_id:w.emp_id||null,heure_debut:w.heure_debut,heure_fin:w.heure_fin,poste:w.poste,contract_id:w.contract_id||null};});});
   // Le journal de restauration est stocké sur la demande, pas sur un stockage local volatil.
   var note=c.note||"",marker="\\n[CP_BACKUP_V1]";
   if(note.indexOf(marker)>=0){showToast("Demande déjà traitée : vérifier avant modification");return;}
+  note+="\\n[CP_DAYS_V2]"+JSON.stringify({days:choices.map(function(x){return {date:x.date,type:x.type,hours:x.hours};})});
   var stored=await supaPatch("conges",{note:note+marker+JSON.stringify(backup)},"id=eq."+encodeURIComponent(c.id));
   if(!stored||!stored.length){showToast("Sauvegarde impossible, aucun planning modifié");return;}
   for(var j=0;j<choices.length;j++){
@@ -2967,7 +2992,7 @@ async function cpReview(id){
     for(var k2=0;k2<x.cp.length;k2++){
       if(await supaDelete("planning","id=eq."+encodeURIComponent(x.cp[k2].id))===null){showToast("Erreur CP : vérifier le planning");return;}
     }
-    if(x.hours>0){
+    if(x.type==="CP"&&x.hours>0){
       var minutes=Math.round(x.hours*60),end=540+minutes;
       var row={id:rowId,date:x.date,emp_nom:e.name,emp_id:c.empId,heure_debut:"09:00",heure_fin:String(Math.floor(end/60)).padStart(2,"0")+":"+String(end%60).padStart(2,"0"),poste:"Vacances / CP"};
       if(await supaPost("planning",row)===null){showToast("Erreur création CP : vérifier le planning");return;}
