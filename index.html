@@ -838,7 +838,7 @@ body{font-family:'Nunito',sans-serif;background:#0e2918;min-height:100vh;color:v
   <button class="cnclbtn" id="shiftDeleteBtn" style="display:none;color:var(--red);border-color:#ef9a9a" onclick="deleteCurrentShift()">&#x1F5D1; Supprimer ce cr&eacute;neau</button>
   <button class="cnclbtn" onclick="closeModal('mShift')">Annuler</button>
 </div></div>
-<div class="mo" id="mCPAjust" onclick="if(event.target===this)closeModal('mCPAjust')"><div class="ms"><div class="mh"></div><div class="mtitle" id="cpAjustTitle">Ajuster les congés payés</div><div class="fr"><label>Total de jours CP acquis souhaité</label><input id="cpAjustVal" type="number" min="0" max="1000" step="0.5" inputmode="decimal"></div><div class="fr"><label>Motif (facultatif)</label><input id="cpAjustNote" placeholder="Régularisation, report..."></div><button class="vbtn" onclick="saveCPAjust()">Enregistrer</button><button class="cnclbtn" onclick="closeModal('mCPAjust')">Annuler</button></div></div>
+<div class="mo" id="mCPAjust" onclick="if(event.target===this)closeModal('mCPAjust')"><div class="ms"><div class="mh"></div><div class="mtitle" id="cpAjustTitle">Ajuster les congés payés</div><div class="fr"><label>Total de jours CP acquis souhaité</label><input id="cpAjustVal" type="number" min="0" max="1000" step="0.5" inputmode="decimal"><div style="font-size:12px;color:var(--tl);margin-top:6px">Saisissez le total acquis, y compris 0. Les jours de congé déjà validés restent déduits séparément.</div></div><div class="fr"><label>Motif (facultatif)</label><input id="cpAjustNote" placeholder="Régularisation, report..."></div><button class="vbtn" id="cpAjustSave" onclick="saveCPAjust()">Enregistrer</button><button class="cnclbtn" onclick="closeModal('mCPAjust')">Annuler</button></div></div>
 <div class="mo" id="mConge" onclick="if(event.target===this)closeModal('mConge')"><div class="ms">
   <div class="mh"></div><div class="mtitle">Poser des conges</div>
   <div id="rhShiftPreview" style="padding:10px;background:#e8f5e9;border-radius:10px;font-size:12px"></div><div class="fr"><label>Employ&eacute;(e)</label><select id="cgEmp"></select></div>
@@ -1582,6 +1582,7 @@ async function loadAllData() {
           phone: e.phone||"", pin: e.pin||"0000",
           keys: e.has_keys||false, boom: e.boom||false, prime_precarite: e.prime_precarite||false,
           mgr: e.is_manager||false, since: e.since||"",
+          cp_ajust: cpAdjustmentValue(e.cp_ajust),
           contractEnd: e.contract_end||null,
           hW: (e.h_week===null||e.h_week===undefined||e.h_week==="")?null:parseFloat(e.h_week),
           hM: (e.h_month===null||e.h_month===undefined||e.h_month==="")?null:parseFloat(e.h_month),
@@ -2094,20 +2095,23 @@ var CHKL = {ouverture:[],fermeture:[],cuisine:[],securite:[]};
 function calcH(a,b){if(!a||!b)return 0;var pa=a.split(":"),pb=b.split(":");if(pa.length<2||pb.length<2)return 0;return ((parseInt(pb[0])*60+parseInt(pb[1]))-(parseInt(pa[0])*60+parseInt(pa[1])))/60;}
 function fmtH(h){return Math.round(h*10)/10;}
 function joursOuvres(f,t){var d=new Date(f),e=new Date(t),n=0;while(d<=e){if(d.getDay()!==0)n++;d.setDate(d.getDate()+1);}return n;}
-function cpAcq(emp){
-  if(!emp) return 0;
+function cpAdjustmentValue(value){
+  var n=Number(value);return Number.isFinite(n)?n:0;
+}
+function cpAutoAcquired(emp){
+  if(!emp)return 0;
   var ct=emp.contract||emp.ct||"";
   // CDI + Alternance: 2.5j/mois automatique
   var autoCP = ct==="CDI" || ct==="Alternance";
   if(autoCP && emp.since){
     var s=new Date(emp.since),now=new Date();
     var m=(now.getFullYear()-s.getFullYear())*12+(now.getMonth()-s.getMonth());
-    var base=Math.round(Math.min(Math.max(0,m),12)*2.5*10)/10;
-    return Math.round((base+(emp.cp_ajust||0))*10)/10;
+    return Number.isFinite(m)?Math.round(Math.min(Math.max(0,m),12)*2.5*10)/10:0;
   }
   // CDD, Extra, Stage, SASU, Partenaire: saisie manuelle uniquement
-  return Math.round((emp.cp_ajust||0)*10)/10;
+  return 0;
 }
+function cpAcq(emp){return emp?Math.round((cpAutoAcquired(emp)+cpAdjustmentValue(emp.cp_ajust))*10)/10:0;}
 function cpPos(eid){return CGL.filter(function(c){return c.empId===eid&&c.type==="CP"&&c.status==="accepted";}).reduce(function(a,c){return a+joursOuvres(c.from,c.to);},0);}
 function hSem(name){
   // Sum hours for currently displayed week in PD
@@ -2863,7 +2867,7 @@ function renderHConges(){
       +"<div style=\"font-size:10px;color:var(--tl)\">Depuis "+e.since+"</div>"
       +ajustBtn+"</div>"
       +"<div style=\"text-align:right\"><div style=\"font-size:18px;font-weight:900;color:"+col+"\">"+rest+"j</div>"
-      +"<div style=\"font-size:10px;color:var(--tl)\">"+acq+"j acquis - "+pos+"j valid&eacute;s"+(e.cp_ajust?"+" +e.cp_ajust+"j ajust&eacute;":"")+"</div></div></div>";
+      +"<div style=\"font-size:10px;color:var(--tl)\">"+acq+"j acquis - "+pos+"j valid&eacute;s</div></div></div>";
   });
   var myEmpId=Object.keys(EMP).find(function(k){return EMP[k].name===(CU?CU.name:"");});
   var isGer=CU&&CU.role==="gerant";
@@ -7400,42 +7404,43 @@ async function refreshAllData(){
 var _refreshAllDataWithPlanningCache=refreshAllData;
 refreshAllData=async function(){invalidatePlanningCache();return _refreshAllDataWithPlanningCache();};
 var EDIT_CP_EMP_ID = null;
+var CP_ADJUST_SAVING = false;
 function openCPAjust(empId){
   if(!(CU&&CU.role==="gerant")){showToast("Accès réservé au gérant");return;}
+  if(CP_ADJUST_SAVING){showToast("Enregistrement en cours…");return;}
   var e = EMP[empId]; if(!e) return;
   EDIT_CP_EMP_ID = empId;
   var t=document.getElementById("cpAjustTitle");
   if(t) t.textContent = "Ajuster CP — " + e.name.split(" ")[0];
   var v=document.getElementById("cpAjustVal");
-  if(v) v.value = e.cp_ajust||0;
+  if(v) v.value = cpAcq(e);
   var n=document.getElementById("cpAjustNote");
   if(n) n.value = "";
   openModal("mCPAjust");
 }
 async function saveCPAjust(){
   if(!(CU&&CU.role==="gerant")){showToast("Accès réservé au gérant");return;}
-  var e = EMP[EDIT_CP_EMP_ID]; if(!e) return;
-  var totalVoulu = Number(document.getElementById("cpAjustVal").value);
-  if(!Number.isFinite(totalVoulu)||totalVoulu<0||totalVoulu>1000){showToast("Nombre de jours invalide");return;}
-  var ct=e.contract||e.ct||"";
-  var autoCP = ct==="CDI" || ct==="Alternance";
-  var ajust;
-  if(autoCP && e.since){
-    // CDI/ALT: cp_ajust = total voulu - acquis naturel
-    var s=new Date(e.since),now=new Date();
-    var mois=(now.getFullYear()-s.getFullYear())*12+(now.getMonth()-s.getMonth());
-    var acqNat=Math.round(Math.min(Math.max(0,mois),12)*2.5*10)/10;
-    ajust=Math.round((totalVoulu-acqNat)*10)/10;
-  } else {
-    // CDD/Extra: cp_ajust = total directly
-    ajust=totalVoulu;
-  }
-  e.cp_ajust = ajust;
-  await supaPatch("employes",{cp_ajust:ajust},"id=eq."+EDIT_CP_EMP_ID);
-  logActivity("CP modifié",e.name+" : "+totalVoulu+"j","rh");
-  closeModal("mCPAjust");
-  renderHConges();
-  showToast("CP mis à jour : "+totalVoulu+"j pour "+e.name.split(" ")[0]);
+  if(CP_ADJUST_SAVING)return;
+  var empId=EDIT_CP_EMP_ID,e=EMP[empId];if(!e)return;
+  var raw=document.getElementById("cpAjustVal").value.trim(),totalVoulu=Number(raw.replace(",","."));
+  if(raw===""||!Number.isFinite(totalVoulu)||totalVoulu<0||totalVoulu>1000){showToast("Nombre de jours invalide");return;}
+  totalVoulu=Math.round(totalVoulu*10)/10;
+  var ajust=Math.round((totalVoulu-cpAutoAcquired(e))*10)/10;
+  var note=document.getElementById("cpAjustNote").value.trim(),btn=document.getElementById("cpAjustSave");
+  CP_ADJUST_SAVING=true;if(btn)btn.disabled=true;
+  try{
+    var result=await supaPatch("employes",{cp_ajust:ajust},"id=eq."+encodeURIComponent(empId));
+    var saved=Array.isArray(result)&&result.find(function(row){return row.id===empId;});
+    if(!saved||saved.cp_ajust===null||saved.cp_ajust===undefined||!Number.isFinite(Number(saved.cp_ajust))||Math.abs(Number(saved.cp_ajust)-ajust)>0.00001){
+      showToast("Ajustement CP non confirmé par le serveur. Réessayez.");return;
+    }
+    if(EMP[empId])EMP[empId].cp_ajust=Number(saved.cp_ajust);
+    logActivity("CP modifié",e.name+" : "+totalVoulu+"j"+(note?" — "+note:""),"rh");
+    closeModal("mCPAjust");renderHConges();
+    if(CEID===empId&&document.getElementById("epHeures")&&!document.getElementById("epHeures").classList.contains("hidden"))renderEpHeures(empId);
+    showToast("CP enregistrés : "+totalVoulu+"j acquis pour "+e.name.split(" ")[0]);
+  }catch(err){showToast("Ajustement CP non enregistré. Vérifiez la connexion et réessayez.");}
+  finally{CP_ADJUST_SAVING=false;if(btn)btn.disabled=false;}
 }
 function pinPress(d){
   var inp=document.getElementById("loginPin"); if(!inp)return;
