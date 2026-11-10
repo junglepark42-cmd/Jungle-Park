@@ -2878,6 +2878,7 @@ function renderHConges(){
   var cards=sorted.map(function(c){
     var e=EMP[c.empId];
     var j=joursOuvres(c.from,c.to);
+    if(c.status==="accepted"&&c.type==="CP"){var meta=(c.note||"").match(/\[CP_DAYS_V2\](\{[^\n]*\})/);if(meta){try{j=JSON.parse(meta[1]).days.filter(function(d){return d.type==="CP";}).length;}catch(ex){}}}
     var isGer=CU&&CU.role==="gerant";
     var acts=(isGer&&c.status==="pending")
       ?"<div class=\"cpacts\"><button class=\"cpbtn ok\" onclick=\"updCg('"+c.id+"','accepted')\">Accepter</button><button class=\"cpbtn refuse\" onclick=\"updCg('"+c.id+"','refused')\">Refuser</button><button class=\"cpbtn del\" onclick=\"delCg('"+c.id+"')\">Suppr.</button></div>"
@@ -2886,7 +2887,7 @@ function renderHConges(){
       +"<div class=\"cph\"><div class=\"cpname\">"+(e?e.name:c.empId)+"</div>"
       +"<span class=\"badge bg-"+(c.status==="accepted"?"green":c.status==="refused"?"red":"gold")+"\">"+lbl[c.status]+"</span></div>"
       +"<div class=\"cpdate\">"+fmtD(c.from)+" vers "+fmtD(c.to)+"</div>"
-      +"<div class=\"cpinfo\">"+c.type+" - "+j+" jours"+(c.note?" - "+c.note:"")+"</div>"
+      +"<div class=\"cpinfo\">"+c.type+" - "+j+" jours"+(c.note?" - "+c.note.split("\\n[CP_DAYS_V2]")[0].split("\\n[CP_BACKUP_V1]")[0]:"")+"</div>"
       +acts+"</div>";
   }).join("");
   el.innerHTML="<div class=\"card\"><div class=\"ctitle\">Soldes CP</div>"
@@ -2981,7 +2982,7 @@ async function cpReview(id){
   // Le journal de restauration est stocké sur la demande, pas sur un stockage local volatil.
   var note=c.note||"",marker="\\n[CP_BACKUP_V1]";
   if(note.indexOf(marker)>=0){showToast("Demande déjà traitée : vérifier avant modification");return;}
-  note+="\\n[CP_DAYS_V2]"+JSON.stringify({days:choices.map(function(x){return {date:x.date,type:x.type,hours:x.hours};})});
+  note+="\n[CP_DAYS_V2]"+JSON.stringify({days:choices.map(function(x){return {date:x.date,type:x.type,hours:x.hours};})});
   var stored=await supaPatch("conges",{note:note+marker+JSON.stringify(backup)},"id=eq."+encodeURIComponent(c.id));
   if(!stored||!stored.length){showToast("Sauvegarde impossible, aucun planning modifié");return;}
   for(var j=0;j<choices.length;j++){
