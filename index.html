@@ -2921,7 +2921,7 @@ function saveConge(){
 // CP : validation explicite, sans estimation silencieuse ni suppression de travail existant.
 function cpDayList(c){
   var out=[],d=new Date(c.from+"T12:00:00"),end=new Date(c.to+"T12:00:00");
-  while(d<=end){var ds=ymdLocal(d);if(d.getDay()!==0&&isEmpActiveOnDate(EMP[c.empId],ds))out.push(ds);d.setDate(d.getDate()+1);}
+  while(d<=end){out.push(ymdLocal(d));d.setDate(d.getDate()+1);}
   return out;
 }
 function cpRowId(c,day){return "cp_"+c.id+"_"+day+"_0";}
@@ -2942,7 +2942,7 @@ async function cpReview(id){
   var overlay=document.createElement("div");overlay.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:12px";
   var card=document.createElement("div");card.style.cssText="background:#fff;border-radius:16px;padding:18px;max-width:520px;width:100%;max-height:88vh;overflow:auto;font-family:Nunito,sans-serif";
   var heading=document.createElement("h3");heading.textContent="Valider les congés — "+e.name;heading.style.marginBottom="8px";card.appendChild(heading);
-  var hint=document.createElement("p");hint.textContent="Choisir CP ou repos hebdomadaire pour chaque journée. Un repos ne décompte aucun CP et vaut 0 heure.";hint.style.cssText="font-size:12px;margin-bottom:12px";card.appendChild(hint);
+  var hint=document.createElement("p");hint.textContent="Tous les jours, dimanches compris : choisir CP ou repos hebdomadaire. Les repos valent 0 heure et ne décomptent aucun CP.";hint.style.cssText="font-size:12px;margin-bottom:12px";card.appendChild(hint);
   for(var i=0;i<days.length;i++){
     var ds=days[i],existing=rows.filter(function(x){return x.date===ds&&((x.emp_id&&x.emp_id===c.empId)||x.emp_nom===e.name);});
     var cp=existing.filter(function(x){return x.poste==="Vacances / CP";});
