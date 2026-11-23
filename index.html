@@ -4018,32 +4018,24 @@ async function deleteStruct(){
 }
 
 async function saveNewStruct(){
-  var nom = document.getElementById("stNom").value.trim();
-  if(!nom){ showToast("Nom obligatoire"); return; }
-  if(EDIT_STRUCT_ID){
-    var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
-    if(s){
-      s.nom  = nom;
-      s.cat  = document.getElementById("stCat").value;
-      s.type = document.getElementById("stType").value;
-      s.zone = document.getElementById("stZone").value.trim();
-      s.note = document.getElementById("stNote").value.trim();
-      await supaPatch("structures",{nom:s.nom,secteur:(document.getElementById("stSecteur")||{value:s.secteur||"parc"}).value||s.secteur||"parc",type:s.type,statut:s.statut||"ok"},"id=eq."+EDIT_STRUCT_ID);
-    }
-    showToast("Structure mise a jour !");
-  } else {
+  var nom=document.getElementById("stNom").value.trim();
+  if(!nom){showToast("Nom obligatoire");return;}
+  var secteur=document.getElementById("stSecteur").value;
+  var type=document.getElementById("stType").value;
+  var id=EDIT_STRUCT_ID;
+  if(id){
+    var st=STRUCTS.find(function(x){return x.id===id;});
+    if(!st)return;
+    var result=await supaPatch("structures",{nom:nom,secteur:secteur,type:type},"id=eq."+id);
+    if(result===null||Array.isArray(result)&&!result.length){showToast("Enregistrement impossible");return;}
+    Object.assign(st,{nom:nom,secteur:secteur,type:type,cat:document.getElementById("stCat").value,zone:document.getElementById("stZone").value.trim(),note:document.getElementById("stNote").value.trim()});
+  }else{
     var newId="st"+Date.now();
-    var newS={id:newId, nom:nom, cat:document.getElementById("stCat").value,
-      secteur:(document.getElementById("stSecteur")||{value:"parc"}).value||"parc",
-      type:document.getElementById("stType").value, zone:document.getElementById("stZone").value.trim(),
-      note:document.getElementById("stNote").value.trim(),
-      statut:"ok", lastDate:"", lastAgent:"", desc:"", rep:"", repNote:"", histo:[]};
-    STRUCTS.push(newS);
-    await supaPost("structures",{id:newId,nom:nom,secteur:newS.secteur,type:newS.type,statut:"ok"});
-    showToast(nom + " ajoutee !");
+    var result=await supaPost("structures",{id:newId,nom:nom,secteur:secteur,type:type,statut:"ok"});
+    if(result===null||Array.isArray(result)&&!result.length){showToast("Création impossible");return;}
+    STRUCTS.push({id:newId,nom:nom,secteur:secteur,type:type,statut:"ok",cat:document.getElementById("stCat").value,zone:document.getElementById("stZone").value.trim(),note:document.getElementById("stNote").value.trim(),histo:[],lastDate:"",lastAgent:""});
   }
-  closeModal("mAddStruct");
-  renderStructList(CURRENT_STRUCT_TAB);
+  closeModal("mAddStruct");renderStructList(CURRENT_STRUCT_TAB);showToast("Structure enregistrée");
 }
 
 var CTRLS = [];
