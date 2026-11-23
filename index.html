@@ -3517,8 +3517,8 @@ function renderStructList(tab){
   // Location tab: show activation toggle
   if(tab==="gonflables" || tab==="location"){
     var locHeader="<div style='background:#fff8e1;border-radius:10px;padding:12px;margin-bottom:12px;border-left:4px solid var(--orange)'>"
-      +"<div style='font-size:13px;font-weight:800;color:var(--orange);margin-bottom:8px'>🚚 Gonflables en location</div>"
-      +"<div style='font-size:12px;color:var(--tm);margin-bottom:10px'>Active uniquement les structures louees ce jour pour les inclure dans le controle.</div>"
+      +"<div style='font-size:13px;font-weight:800;color:var(--orange);margin-bottom:8px'>🏰 Contrôles des gonflables</div>"
+      +"<div style='font-size:12px;color:var(--tm);margin-bottom:10px'>Sélectionne les gonflables à contrôler aujourd’hui. Le bon de montage reste dans Locations.</div>"
       +list.map(function(s){
         var active=s.enLocation||false;
         return "<div style='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5'>"
@@ -3841,7 +3841,7 @@ function openStructCtrl(id){
     hb.innerHTML = "<div style=\"font-size:12px;color:var(--tl);padding:4px 0\">Aucun historique</div>";
   }
   var locSect=document.getElementById("sctrlLocationSect");
-  if(locSect)locSect.style.display=(s&&(s.secteur==="gonflables"||s.secteur==="location"))?"block":"none";
+  if(locSect)locSect.style.display="none"; // Contrôle quotidien identique aux autres structures
   // Show/hide mensuel and annuel blocks
   var isMensuel=CURRENT_STRUCT_TAB==="mensuel";
   var isAnnuel=CURRENT_STRUCT_TAB==="annuel";
@@ -3953,16 +3953,7 @@ async function saveStructCtrl(){
   renderStructList(CURRENT_STRUCT_TAB);
   showToast(s.nom + " : " + {ok:"OK",defaut:"Defaut signale",hs:"Hors service"}[statut]);
 
-  // Open PDF modal for location structures
-  if((s.secteur==="gonflables"||s.secteur==="location") && s.histo && s.histo.length){
-    var _pdfEntry = s.histo[0];
-    var _pdfNom = s.nom;
-    setTimeout(function(){
-      var btn = document.getElementById("pdfGenBtn");
-      if(btn) btn.onclick = function(){ closeModal("mPDFLocation"); exportLocationPDF(_pdfEntry, _pdfNom); };
-      openModal("mPDFLocation");
-    }, 400);
-  }
+
 }
 
 function openAddStructForm(id){
