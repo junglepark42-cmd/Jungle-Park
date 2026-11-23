@@ -1171,7 +1171,7 @@ nale (tous les 2 ans)</option>
     <option value="exterieur">Structure exterieure</option>
     <option value="autre">Autre</option>
   </select></div>
-  <div class="fr"><label>Type de controle</label><select id="esType">
+  <div class="fr"><label>Statut</label><select id="esStatut"><option value="ok">En service</option><option value="hs">Hors service</option><option value="retire">Retirée du parc</option></select></div><div class="fr"><label>Type de controle</label><select id="esType">
     <option value="quotidien">Quotidien</option>
     <option value="mensuel">Mensuel</option>
     <option value="annuel">Annuel</option>
@@ -3689,7 +3689,7 @@ function openEditFiche(id){
     }
     setVal("esNom",      s.nom);
     setVal("esCat",      s.cat);
-    setVal("esType",     s.type);
+    setVal("esType",     s.type);setVal("esStatut",s.statut==="retire"?"retire":s.statut==="hs"?"hs":"ok");
     setVal("esZone",     s.zone     || "");
     setVal("esCapacite", s.capacite??"");setVal("esAgeMin",s.ageMin??"");setVal("esAgeMax",s.ageMax??"");
     setVal("esAnnee",    s.annee    || "");
@@ -3712,9 +3712,9 @@ async function saveFiche(){
   s.marque   = document.getElementById("esMarque").value.trim();
   s.serie    = document.getElementById("esSerie").value.trim();
   s.note     = document.getElementById("esNote").value.trim();
-  var changes={nom:s.nom,type:s.type,capacite:s.capacite||null,age_min:document.getElementById("esAgeMin").value===""?null:Number(document.getElementById("esAgeMin").value),age_max:document.getElementById("esAgeMax").value===""?null:Number(document.getElementById("esAgeMax").value),fabricant:s.marque,numero_serie:s.serie};
+  var changes={nom:s.nom,type:s.type,statut:document.getElementById("esStatut").value,capacite:s.capacite||null,age_min:document.getElementById("esAgeMin").value===""?null:Number(document.getElementById("esAgeMin").value),age_max:document.getElementById("esAgeMax").value===""?null:Number(document.getElementById("esAgeMax").value),fabricant:s.marque,numero_serie:s.serie};
   if(changes.age_min!==null&&changes.age_max!==null&&changes.age_min>changes.age_max){showToast("Âges incohérents");return;}
-  var saved=await supaPatch("structures",changes,"id=eq."+s.id);if(saved===null||Array.isArray(saved)&&!saved.length){Object.assign(s,previous);showToast("Erreur de sauvegarde");return;}s.ageMin=changes.age_min;s.ageMax=changes.age_max;s.fabricant=s.marque;s.numeroSerie=s.serie;
+  var saved=await supaPatch("structures",changes,"id=eq."+s.id);if(saved===null||Array.isArray(saved)&&!saved.length){Object.assign(s,previous);showToast("Erreur de sauvegarde");return;}s.statut=changes.statut;s.ageMin=changes.age_min;s.ageMax=changes.age_max;s.fabricant=s.marque;s.numeroSerie=s.serie;
   closeModal("mEditStructFiche");
   openFiche(EDIT_STRUCT_ID);
   showToast("Fiche mise a jour !");
