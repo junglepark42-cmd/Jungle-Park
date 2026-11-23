@@ -960,7 +960,7 @@ nale (tous les 2 ans)</option>
     <button class="ctab" onclick="switchStructTab('gonflables',this)">&#x1F3F0; Gonflables</button>
     <button class="ctab" onclick="switchStructTab('mensuel',this)">Mensuel</button>
     <button class="ctab" onclick="switchStructTab('annuel',this)">Annuel</button>
-    <button class="ctab" onclick="switchStructTab('historique',this)">&#x1F4CB; Historique</button>
+    <button class="ctab" onclick="switchStructTab('historique',this)">&#x1F4CB; Historique</button><button class="ctab" onclick="switchStructTab('fiches',this)">Fiches</button>
     
   </div>
   <div id="structContent"></div>
@@ -1171,7 +1171,7 @@ nale (tous les 2 ans)</option>
     <option value="exterieur">Structure exterieure</option>
     <option value="autre">Autre</option>
   </select></div>
-  <div class="fr"><label>Type de controle</label><select id="esType">
+  <div class="fr"><label>Statut</label><select id="esStatut"><option value="ok">En service</option><option value="hs">Hors service</option><option value="retire">Retirée du parc</option></select></div><div class="fr"><label>Type de controle</label><select id="esType">
     <option value="quotidien">Quotidien</option>
     <option value="mensuel">Mensuel</option>
     <option value="annuel">Annuel</option>
@@ -1182,7 +1182,7 @@ nale (tous les 2 ans)</option>
     <div class="fr"><label>Annee acquisition</label><input id="esAnnee" type="number" placeholder="ex: 2022"></div>
   </div>
   <div class="fr"><label>Marque / Fabricant</label><input id="esMarque" placeholder="ex: Airquee, Berg..."></div>
-  <div class="fr"><label>Numero de serie</label><input id="esSerie" placeholder="ex: SN-2022-001"></div>
+  <div class="fg2"><div class="fr"><label>Âge min.</label><input type="number" min="0" id="esAgeMin"></div><div class="fr"><label>Âge max.</label><input type="number" min="0" id="esAgeMax"></div></div><div class="fr"><label>Numero de serie</label><input id="esSerie" placeholder="ex: SN-2022-001"></div>
   <div class="fr"><label>Consigne de controle</label><input id="esNote" placeholder="ex: verifier coutures..."></div>
   <button class="vbtn" onclick="saveFiche()">Enregistrer la fiche</button>
   <button class="cnclbtn" onclick="closeModal('mEditStructFiche')">Annuler</button>
@@ -1479,7 +1479,7 @@ nale (tous les 2 ans)</option>
     <div class="fg2"><div class="fr"><label>Fixations nécessaires</label><input id="bonFixNec" type="number" min="0"></div><div class="fr"><label>Fixations installées</label><input id="bonFixInst" type="number" min="0"></div></div>
     <div class="fr"><label>Détail des lests utilisés</label><textarea id="bonLests" rows="2" placeholder="Ex. 4 lests de 25 kg / 2 lests à eau de 80 L"></textarea></div>
     <div class="fg2"><div class="fr"><label>Utilisateurs prévus (total événement)</label><input id="bonUsersTotal" type="number" min="0"></div><div class="fr"><label>Capacité simultanée de la structure</label><input id="bonCapacite" type="number" min="0"></div></div>
-    <div class="fg2"><div class="fr"><label>Âge / limites d'âge</label><input id="bonAge" placeholder="Ex. 3 à 12 ans"></div><div class="fr"><label>Poids / limite (kg)</label><input id="bonPoids" placeholder="kg"></div></div>
+    <div id="bonStructureInfo" style="font-size:11px;color:#9a5800;margin-bottom:8px"></div><div class="fg2"><div class="fr"><label>Âge / limites d'âge</label><input id="bonAge" placeholder="Ex. 3 à 12 ans"></div><div class="fr"><label>Poids / limite (kg)</label><input id="bonPoids" placeholder="kg"></div></div>
     <div class="fr"><label>Taille / limite</label><input id="bonTaille" placeholder="Ex. 1,50 m maximum"></div>
   </div>
   <div class="card"><div class="ctitle">🔎 Analyse structure et installation</div><div id="bonChecks"></div></div>
@@ -1637,7 +1637,7 @@ async function loadAllData() {
       STRUCTS = structsRows.map(function(s){
         return {id:s.id, nom:s.nom||"Structure", secteur:s.secteur||"parc",
           type:s.type||"gonflable", statut:s.statut||"ok",
-          lastDate:"", lastAgent:"", histo:[],
+          lastDate:"", lastAgent:"", histo:[], capacite:s.capacite,ageMin:s.age_min,ageMax:s.age_max,fabricant:s.fabricant||"",numeroSerie:s.numero_serie||"",
           desc:s.desc||"", rep:s.rep||"", repNote:""};
       });
     }
@@ -3497,7 +3497,7 @@ function renderStructList(tab){
     list=STRUCTS.filter(function(s){return s.secteur==="exterieur";});
   } else if(tab==="gonflables" || tab==="location"){
     // Only show location structures that are en location today
-    list=STRUCTS.filter(function(s){return (s.secteur==="gonflables"||s.secteur==="location");});
+    list=STRUCTS.filter(function(s){return (s.secteur==="gonflables"||s.secteur==="location")&&s.statut!=="retire";});
   } else if(tab==="mensuel"){
     list=STRUCTS.filter(function(s){return s.secteur==="parc"||s.secteur==="exterieur"||(s.secteur==="gonflables"||s.secteur==="location");});
   } else if(tab==="annuel"){
@@ -3506,7 +3506,7 @@ function renderStructList(tab){
     renderStructHistorique();
     return;
   } else if(tab==="fiches"){
-    renderStructFiches();
+    renderStructFiches(el);
     return;
   } else {
     list=STRUCTS;
@@ -3522,7 +3522,7 @@ function renderStructList(tab){
       +list.map(function(s){
         var active=s.enLocation||false;
         return "<div style='display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f5f5f5'>"
-          +"<span style='font-size:13px;font-weight:700'>"+s.nom+"</span>"
+          +"<button type='button' onclick=\"openFiche(\'"+s.id+"\')\" style='border:0;background:transparent;text-align:left;flex:1;text-decoration:underline;font-weight:800;padding:8px'>"+escLoc(s.nom)+" · Voir fiche</button>"
           +"<label style='display:flex;align-items:center;gap:8px;cursor:pointer'>"
           +"<input type='checkbox' "+(active?"checked":"")+" onchange='toggleLocationActive(\""+s.id+"\",this.checked)' style='width:18px;height:18px;cursor:pointer'>"
           +"<span style='font-size:12px;color:"+(active?"var(--g2)":"var(--tl)")+"'>"+(active?"Active":"Inactif")+"</span>"
@@ -3596,13 +3596,13 @@ function renderStructFiches(el){
   // Show all structures as cards with key info
   var rows = STRUCTS.map(function(s){
     var sc = {ok:"ss-ok",defaut:"ss-defaut",hs:"ss-hs",new:"ss-new"}[s.statut]||"ss-new";
-    var stxt = {ok:"OK",defaut:"Defaut",hs:"Hors service",new:"Jamais controle"}[s.statut];
+    var stxt = {ok:"OK",defaut:"Defaut",hs:"Hors service",new:"Jamais controle",retire:"Retirée du parc"}[s.statut];
     var typeBadge = {quotidien:"Quotidien",mensuel:"Mensuel",annuel:"Annuel"}[s.type];
     return "<div class=\"struct-item\" onclick=\"openFiche('"+s.id+"')\">"
       +"<div class=\"struct-hdr\">"
       +"<div style=\"flex:1\">"
       +"<div class=\"struct-name\">"+s.nom+"</div>"
-      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+CAT_NOM[s.cat]+"</div>"
+      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+(CAT_NOM[s.cat]||s.secteur||"Structure")+"</div>"
       +"<div style=\"display:flex;gap:6px;margin-top:4px;flex-wrap:wrap\">"
       +(s.capacite?"<span style=\"font-size:10px;background:#e3f2fd;color:var(--blue);padding:2px 7px;border-radius:10px;font-weight:700\">"+s.capacite+" pers.</span>":"")
       +(s.marque?"<span style=\"font-size:10px;background:#f5f5f5;padding:2px 7px;border-radius:10px\">"+s.marque+"</span>":"")
@@ -3633,15 +3633,15 @@ function openFiche(id){
       if(el) el.innerHTML = val;
     }
     set("sfNom",  s.nom);
-    set("sfCat",  CAT_NOM[s.cat]||s.cat);
+    set("sfCat",  CAT_NOM[s.cat]||s.secteur||"Structure");
     set("sfZone", s.zone || "");
     set("sfCapacite", s.capacite ? s.capacite+" personnes" : "--");
-    set("sfMarque",   s.marque  || "--");
+    set("sfMarque",   s.fabricant||s.marque||"--");
     set("sfAnnee",    s.annee   || "--");
-    set("sfSerie",    s.serie   || "--");
+    set("sfSerie",    s.numeroSerie||s.serie||"--");
     set("sfType",     {quotidien:"Quotidien",mensuel:"Mensuel",annuel:"Annuel"}[s.type]||s.type);
     set("sfNote",     s.note    || "--");
-    var stxt = {ok:"OK / Conforme", defaut:"Defaut signale", hs:"Hors service", new:"Jamais controle"}[s.statut]||s.statut;
+    var stxt = {ok:"En service", defaut:"Défaut", hs:"Hors service", new:"Jamais contrôlé",retire:"Retirée du parc"}[s.statut]||s.statut;
     set("sfStatut",  stxt);
     set("sfDernier", s.lastDate  || "--");
     set("sfAgent",   s.lastAgent || "--");
@@ -3673,7 +3673,7 @@ function openFiche(id){
     setH("sfHisto", hrows);
     var eb = document.getElementById("sfEditBtn");
     if(eb) eb.innerHTML = (CU && CU.role === "gerant")
-      ? "<button class=\"vbtn\" style=\"margin-bottom:8px\" onclick=\"openEditFiche('"+id+"')\">Modifier la fiche</button>" : "";
+      ? "<button class=\"vbtn\" style=\"margin-bottom:8px\" onclick=\"openEditFiche('"+id+"')\">Modifier la fiche</button><button class=\"cnclbtn\" onclick=\"retireStructure(\'"+id+"\')\">Retirer du parc</button>" : "";
   }, 30);
 }
 
@@ -3689,19 +3689,20 @@ function openEditFiche(id){
     }
     setVal("esNom",      s.nom);
     setVal("esCat",      s.cat);
-    setVal("esType",     s.type);
+    setVal("esType",     s.type);setVal("esStatut",s.statut==="retire"?"retire":s.statut==="hs"?"hs":"ok");
     setVal("esZone",     s.zone     || "");
-    setVal("esCapacite", s.capacite || "");
+    setVal("esCapacite", s.capacite??"");setVal("esAgeMin",s.ageMin??"");setVal("esAgeMax",s.ageMax??"");
     setVal("esAnnee",    s.annee    || "");
-    setVal("esMarque",   s.marque   || "");
-    setVal("esSerie",    s.serie    || "");
+    setVal("esMarque",   s.fabricant||s.marque||"");
+    setVal("esSerie",    s.numeroSerie||s.serie||"");
     setVal("esNote",     s.note     || "");
   }, 30);
 }
 
-function saveFiche(){
+async function saveFiche(){
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Erreur"); return; }
+  var previous=Object.assign({},s);
   s.nom      = document.getElementById("esNom").value.trim()     || s.nom;
   s.cat      = document.getElementById("esCat").value;
   s.type     = document.getElementById("esType").value;
@@ -3711,11 +3712,15 @@ function saveFiche(){
   s.marque   = document.getElementById("esMarque").value.trim();
   s.serie    = document.getElementById("esSerie").value.trim();
   s.note     = document.getElementById("esNote").value.trim();
+  var changes={nom:s.nom,type:s.type,statut:document.getElementById("esStatut").value,capacite:s.capacite||null,age_min:document.getElementById("esAgeMin").value===""?null:Number(document.getElementById("esAgeMin").value),age_max:document.getElementById("esAgeMax").value===""?null:Number(document.getElementById("esAgeMax").value),fabricant:s.marque,numero_serie:s.serie};
+  if(changes.age_min!==null&&changes.age_max!==null&&changes.age_min>changes.age_max){showToast("Âges incohérents");return;}
+  var saved=await supaPatch("structures",changes,"id=eq."+s.id);if(saved===null||Array.isArray(saved)&&!saved.length){Object.assign(s,previous);showToast("Erreur de sauvegarde");return;}s.statut=changes.statut;s.ageMin=changes.age_min;s.ageMax=changes.age_max;s.fabricant=s.marque;s.numeroSerie=s.serie;
   closeModal("mEditStructFiche");
   openFiche(EDIT_STRUCT_ID);
   showToast("Fiche mise a jour !");
 }
 
+async function retireStructure(id){if(!CU||CU.role!=="gerant")return;var st=STRUCTS.find(function(x){return x.id===id});if(!st||!confirm("Retirer "+st.nom+" du parc ? Son historique sera conservé."))return;var result=await supaPatch("structures",{statut:"retire"},"id=eq."+id);if(result===null){showToast("Archivage impossible");return;}st.statut="retire";closeModal("mStructFiche");renderStructList(CURRENT_STRUCT_TAB);showToast("Structure retirée du parc");}
 function renderStructHisto(el){
   // Build full history across all structures, sorted by date desc
   var allHisto = [];
@@ -3995,18 +4000,17 @@ async function deleteStructDirect(id){
   if(!s) return;
   if(!confirm("Supprimer " + s.nom + " ?")) return;
   var nom = s.nom;
-  STRUCTS = STRUCTS.filter(function(x){ return x.id !== id; });
-  await supa("structures","DELETE",null,"id=eq."+id);
+  var result=await supaPatch("structures",{statut:"retire"},"id=eq."+id);if(result===null||Array.isArray(result)&&!result.length)return;s.statut="retire";
   renderStructList(CURRENT_STRUCT_TAB);
   showToast(nom + " supprimee !");
 }
 
-function deleteStruct(){
+async function deleteStruct(){
   if(!EDIT_STRUCT_ID){ showToast("Erreur : aucune structure selectionnee"); return; }
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Structure introuvable"); return; }
   var nom = s.nom;
-  STRUCTS = STRUCTS.filter(function(x){ return x.id !== EDIT_STRUCT_ID; });
+  var result=await supaPatch("structures",{statut:"retire"},"id=eq."+EDIT_STRUCT_ID);if(result===null||Array.isArray(result)&&!result.length){showToast("Archivage impossible");return;}s.statut="retire";
   EDIT_STRUCT_ID = null;
   closeModal("mAddStruct");
   renderStructList(CURRENT_STRUCT_TAB);
@@ -4014,32 +4018,24 @@ function deleteStruct(){
 }
 
 async function saveNewStruct(){
-  var nom = document.getElementById("stNom").value.trim();
-  if(!nom){ showToast("Nom obligatoire"); return; }
-  if(EDIT_STRUCT_ID){
-    var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
-    if(s){
-      s.nom  = nom;
-      s.cat  = document.getElementById("stCat").value;
-      s.type = document.getElementById("stType").value;
-      s.zone = document.getElementById("stZone").value.trim();
-      s.note = document.getElementById("stNote").value.trim();
-      await supaPatch("structures",{nom:s.nom,secteur:(document.getElementById("stSecteur")||{value:s.secteur||"parc"}).value||s.secteur||"parc",type:s.type,statut:s.statut||"ok"},"id=eq."+EDIT_STRUCT_ID);
-    }
-    showToast("Structure mise a jour !");
-  } else {
+  var nom=document.getElementById("stNom").value.trim();
+  if(!nom){showToast("Nom obligatoire");return;}
+  var secteur=document.getElementById("stSecteur").value;
+  var type=document.getElementById("stType").value;
+  var id=EDIT_STRUCT_ID;
+  if(id){
+    var st=STRUCTS.find(function(x){return x.id===id;});
+    if(!st)return;
+    var result=await supaPatch("structures",{nom:nom,secteur:secteur,type:type},"id=eq."+id);
+    if(result===null||Array.isArray(result)&&!result.length){showToast("Enregistrement impossible");return;}
+    Object.assign(st,{nom:nom,secteur:secteur,type:type,cat:document.getElementById("stCat").value,zone:document.getElementById("stZone").value.trim(),note:document.getElementById("stNote").value.trim()});
+  }else{
     var newId="st"+Date.now();
-    var newS={id:newId, nom:nom, cat:document.getElementById("stCat").value,
-      secteur:(document.getElementById("stSecteur")||{value:"parc"}).value||"parc",
-      type:document.getElementById("stType").value, zone:document.getElementById("stZone").value.trim(),
-      note:document.getElementById("stNote").value.trim(),
-      statut:"ok", lastDate:"", lastAgent:"", desc:"", rep:"", repNote:"", histo:[]};
-    STRUCTS.push(newS);
-    await supaPost("structures",{id:newId,nom:nom,secteur:newS.secteur,type:newS.type,statut:"ok"});
-    showToast(nom + " ajoutee !");
+    var result=await supaPost("structures",{id:newId,nom:nom,secteur:secteur,type:type,statut:"ok"});
+    if(result===null||Array.isArray(result)&&!result.length){showToast("Création impossible");return;}
+    STRUCTS.push({id:newId,nom:nom,secteur:secteur,type:type,statut:"ok",cat:document.getElementById("stCat").value,zone:document.getElementById("stZone").value.trim(),note:document.getElementById("stNote").value.trim(),histo:[],lastDate:"",lastAgent:""});
   }
-  closeModal("mAddStruct");
-  renderStructList(CURRENT_STRUCT_TAB);
+  closeModal("mAddStruct");renderStructList(CURRENT_STRUCT_TAB);showToast("Structure enregistrée");
 }
 
 var CTRLS = [];
@@ -9444,7 +9440,7 @@ function locStatusColor(s){return {preparer:"#f5a623",installer:"#ef6c00",instal
 function openLocations(){openModal("mLocations");renderLocations("active");}
 function renderLocations(mode,btn){if(btn){document.querySelectorAll("#mLocations .ctab").forEach(function(b){b.classList.remove("active")});btn.classList.add("active");}var el=document.getElementById("locationsContent");if(!el)return;var today=tod();var list=LOCATIONS.filter(function(l){return mode==="past"?(l.statut==="terminee"||l.date<today):(l.statut!=="terminee")});list.sort(function(a,b){return mode==="past"?b.date.localeCompare(a.date):a.date.localeCompare(b.date)});if(!list.length){el.innerHTML="<div style='text-align:center;color:var(--tl);padding:24px'>Aucune location</div>";return;}el.innerHTML=list.map(function(l){var names=(l.structures||[]).map(function(id){var st=STRUCTS.find(function(x){return x.id===id});return st?st.nom:id}).join(", ");return "<div class='loc-card' style='border-left-color:"+locStatusColor(l.statut)+"' onclick=\"openLocationDetail('"+l.id+"')\"><div style='display:flex;justify-content:space-between;gap:8px'><div style='font-size:15px;font-weight:900'>"+escLoc(l.client)+"</div><span class='loc-status' style='background:"+locStatusColor(l.statut)+"18;color:"+locStatusColor(l.statut)+"'>"+locStatusLabel(l.statut)+"</span></div><div style='font-size:12px;font-weight:800;color:var(--g2);margin-top:4px'>"+jjmmaaaa(l.date)+" "+(l.heureInstall||"")+"</div><div style='font-size:12px;color:var(--tm);margin-top:3px'>🏰 "+escLoc(names||"Aucune structure")+"</div><div style='font-size:11px;color:var(--tl);margin-top:2px'>📍 "+escLoc(l.adresse)+"</div></div>"}).join("");}
 function fillEmpSelect(id,val){var e=document.getElementById(id);if(!e)return;e.innerHTML=Object.keys(EMP).map(function(k){return "<option value='"+escLoc(EMP[k].name)+"'>"+escLoc(EMP[k].name)+"</option>"}).join("");if(val)e.value=val;else if(CU)e.value=CU.name;}
-function renderLocStructChoices(selected){selected=selected||[];var e=document.getElementById("locStructChoices");if(!e)return;var order={gonflables:0,location:0,parc:1,exterieur:2};var arr=STRUCTS.slice().sort(function(a,b){return (order[a.secteur]??9)-(order[b.secteur]??9)||a.nom.localeCompare(b.nom)});e.innerHTML=arr.map(function(st){var cat=(st.secteur==="gonflables"||st.secteur==="location")?"Gonflables":st.secteur==="parc"?"Parc":"Extérieur";return "<label style='display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #f3f3f3'><input type='checkbox' class='loc-struct-cb' value='"+st.id+"' "+(selected.indexOf(st.id)>=0?"checked":"")+" style='width:20px;height:20px'><span style='flex:1;font-size:13px;font-weight:800'>"+escLoc(st.nom)+"</span><span style='font-size:10px;color:var(--tl)'>"+cat+"</span></label>"}).join("");}
+function renderLocStructChoices(selected){selected=selected||[];var e=document.getElementById("locStructChoices");if(!e)return;var order={gonflables:0,location:0,parc:1,exterieur:2};var arr=STRUCTS.filter(function(st){return st.statut!=="retire"||selected.indexOf(st.id)>=0;}).sort(function(a,b){return (order[a.secteur]??9)-(order[b.secteur]??9)||a.nom.localeCompare(b.nom)});e.innerHTML=arr.map(function(st){var cat=(st.secteur==="gonflables"||st.secteur==="location")?"Gonflables":st.secteur==="parc"?"Parc":"Extérieur";return "<label style='display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #f3f3f3'><input type='checkbox' class='loc-struct-cb' value='"+st.id+"' "+(selected.indexOf(st.id)>=0?"checked":"")+" style='width:20px;height:20px'><span style='flex:1;font-size:13px;font-weight:800'>"+escLoc(st.nom)+"</span><span style='font-size:10px;color:var(--tl)'>"+cat+"</span></label>"}).join("");}
 function openLocationForm(id){EDIT_LOCATION_ID=id||null;var l=id?LOCATIONS.find(function(x){return x.id===id}):null;document.getElementById("locFormTitle").textContent=l?"Modifier la location":"Nouvelle location";["locClient","locTel","locEmail","locAdresse","locHeureInstall","locHeureRecup","locConsignes","locObs","locMontant","locAcompte"].forEach(function(x){document.getElementById(x).value=""});document.getElementById("locDate").value=tod();document.getElementById("locStatut").value="preparer";fillEmpSelect("locResponsable",l&&l.responsable);if(l){document.getElementById("locClient").value=l.client;document.getElementById("locTel").value=l.tel;document.getElementById("locEmail").value=l.email;document.getElementById("locAdresse").value=l.adresse;document.getElementById("locDate").value=l.date;document.getElementById("locHeureInstall").value=l.heureInstall;document.getElementById("locHeureRecup").value=l.heureRecup;document.getElementById("locStatut").value=l.statut;document.getElementById("locConsignes").value=l.consignes;document.getElementById("locObs").value=l.observations;document.getElementById("locMontant").value=l.montant;document.getElementById("locAcompte").value=l.acompte;}renderLocStructChoices(l?l.structures:[]);openModal("mLocationForm");}
 async function saveLocation(){var client=document.getElementById("locClient").value.trim(),date=document.getElementById("locDate").value,adresse=document.getElementById("locAdresse").value.trim();var structures=Array.from(document.querySelectorAll(".loc-struct-cb:checked")).map(function(x){return x.value});if(!client||!date||!adresse||!structures.length){showToast("Client, date, adresse et structure obligatoires");return;}var id=EDIT_LOCATION_ID||("loc_"+Date.now());var l={id:id,client:client,tel:document.getElementById("locTel").value.trim(),email:document.getElementById("locEmail").value.trim(),adresse:adresse,date:date,heureInstall:document.getElementById("locHeureInstall").value,heureRecup:document.getElementById("locHeureRecup").value,responsable:document.getElementById("locResponsable").value,statut:document.getElementById("locStatut").value,structures:structures,consignes:document.getElementById("locConsignes").value.trim(),observations:document.getElementById("locObs").value.trim(),montant:document.getElementById("locMontant").value||null,acompte:document.getElementById("locAcompte").value||null};var row={id:l.id,client_nom:l.client,telephone:l.tel,email:l.email,adresse:l.adresse,date_location:l.date,heure_installation:l.heureInstall||null,heure_recuperation:l.heureRecup||null,responsable:l.responsable,statut:l.statut,structures:l.structures,consignes:l.consignes,observations:l.observations,montant:l.montant,acompte:l.acompte};var res=EDIT_LOCATION_ID?await supaPatch("locations_clients",row,"id=eq."+id):await supaPost("locations_clients",row);if(res===null){showToast("Erreur Supabase - vérifiez le SQL Locations");return;}var i=LOCATIONS.findIndex(function(x){return x.id===id});if(i>=0)LOCATIONS[i]=Object.assign(LOCATIONS[i],l);else LOCATIONS.push(l);await logActivity(EDIT_LOCATION_ID?"Location modifiée":"Location créée",l.client+" - "+l.date,"location");closeModal("mLocationForm");renderLocations("active");showToast("Location enregistrée");}
 function getBonForLoc(id){return LOCATION_BONS.find(function(b){return b.location_id===id&&b.is_current!==false})||null;}
@@ -9458,7 +9454,7 @@ function renderBonValidations(saved){saved=saved||{};document.getElementById("bo
 function legacyBonData(b){var d={form:{},installation:{},meteo:{},validations:{}};if(!b)return d;if(b.checks&&b.checks._v2)return b.checks.data||d;var old=b.checks||{};var map={8:"souffleur_puissance",9:"souffleur_sangle",10:"branchement",13:"stabilite",14:"barriere_entree",15:"gonflage",16:"coutures",17:"meteo"};Object.keys(map).forEach(function(i){var r=old[i];if(r)d.installation[map[i]]={status:(typeof r==="object"?r.status:r)==="ok"?"conforme":(typeof r==="object"?r.status:r)==="anomalie"?"non_conforme":"na",note:typeof r==="object"?r.note||"":""};});d.meteo.vent=b.vent==null?"":b.vent;d.form.lieu=(b.client_snapshot&&b.client_snapshot.adresse)||"";return d;}
 function toggleBonVentNA(){var v=document.getElementById("bonVentNA").value;document.getElementById("bonVentFields").style.display=v==="mesure"?"block":"none";}
 function toggleBonProtection(){document.getElementById("bonProtectionFields").style.display=document.getElementById("bonProtection").value==="oui"?"block":"none";}
-function openLocationBon(id){CURRENT_LOCATION_ID=id;var l=LOCATIONS.find(function(x){return x.id===id});if(!l)return;var b=getBonForLoc(id),d=legacyBonData(b),f=d.form||{},m=d.meteo||{},locked=bonIsSigned(b);BON_PHOTOS=b&&b.photos?b.photos:[];renderMulti("bonSols",BON_SOLS,"bon-sol");renderMulti("bonAncrages",BON_ANCRAGES,"bon-ancrage");renderMulti("bonProtectionDirs",BON_DIRS,"bon-protdir");var structs=(l.structures||[]).map(function(sid){var st=STRUCTS.find(function(x){return x.id===sid});return st||{id:sid,nom:sid}});document.getElementById("bonStructure").innerHTML="<option value=''>Choisir…</option>"+structs.map(function(st){return "<option value='"+escLoc(st.id)+"'>"+escLoc(st.nom)+"</option>"}).join("");document.getElementById("bonDateMontage").value=f.date||l.date||tod();document.getElementById("bonHeureMontage").value=f.heure||l.heureInstall||"";document.getElementById("bonLieu").value=f.lieu||l.adresse||"";document.getElementById("bonLieuType").value=f.lieuType||"";document.getElementById("bonStructure").value=f.structureId||(structs.length===1?structs[0].id:"");setMulti("bon-sol",f.sols);setMulti("bon-ancrage",f.ancrages);document.getElementById("bonSolAutre").value=f.solAutre||"";document.getElementById("bonSolAutre").style.display=(f.sols||[]).indexOf("Autre")>=0?"block":"none";document.getElementById("bonAncrageAutre").value=f.ancrageAutre||"";document.getElementById("bonAncrageAutre").style.display=(f.ancrages||[]).indexOf("Autre")>=0?"block":"none";document.querySelectorAll(".bon-sol,.bon-ancrage").forEach(function(x){x.onchange=function(){document.getElementById("bonSolAutre").style.display=getMulti("bon-sol").indexOf("Autre")>=0?"block":"none";document.getElementById("bonAncrageAutre").style.display=getMulti("bon-ancrage").indexOf("Autre")>=0?"block":"none";}});["FixNec","FixInst","Lests","UsersTotal","Capacite","Age","Poids","Taille"].forEach(function(k){document.getElementById("bon"+k).value=f[k.charAt(0).toLowerCase()+k.slice(1)]||""});document.getElementById("bonPluie").value=m.pluie||"";document.getElementById("bonVentNA").value=m.ventMode||((f.lieuType==="interieur"&&!m.vent)?"na":"mesure");document.getElementById("bonVent").value=m.vent==null?"":m.vent;document.getElementById("bonVentDir").value=m.ventDir||"";document.getElementById("bonRafales").value=m.rafales||"";document.getElementById("bonRafalesVitesse").value=m.rafalesVitesse==null?"":m.rafalesVitesse;document.getElementById("bonVigilance").value=m.vigilance||"";document.getElementById("bonVigilanceDetail").value=m.vigilanceDetail||"";document.getElementById("bonProtection").value=m.protection||"";setMulti("bon-protdir",m.protectionDirs);document.getElementById("bonProtectionDesc").value=m.protectionDesc||"";toggleBonVentNA();toggleBonProtection();renderBonChecks(d.installation);renderBonValidations(d.validations);fillEmpSelect("bonInstallateur",b&&b.agent?b.agent:l.responsable);document.getElementById("bonSignataire").value=b&&b.signataire?b.signataire:l.client;document.getElementById("bonObs").value=b?b.observations||"":"";document.getElementById("bonValidation").checked=locked;renderBonPhotos();document.getElementById("locBonLocked").innerHTML=locked?"<div class='loc-locked'>🔒 Bon signé : cette version est figée.</div><button class='cnclbtn' onclick=\"newLocationBonVersion('"+id+"')\">Créer une nouvelle version</button>":b?"<div style='background:#fff8e1;padding:9px;border-radius:8px;font-size:11px;font-weight:700'>💾 Brouillon enregistré — non signé.</div>":"";document.querySelectorAll("#mLocationBon input,#mLocationBon select,#mLocationBon textarea").forEach(function(x){if(x.id!=="bonPhotosPreview")x.disabled=locked});document.getElementById("saveBonBtn").style.display=locked?"none":"block";document.getElementById("draftBonBtn").style.display=locked?"none":"block";openModal("mLocationBon");setTimeout(function(){initLocSig();clearLocSig();if(b&&b.signature){var im=new Image();im.onload=function(){document.getElementById("locSigCanvas").getContext("2d").drawImage(im,0,0,500,140)};im.src=b.signature;}},100);}
+function openLocationBon(id){CURRENT_LOCATION_ID=id;var l=LOCATIONS.find(function(x){return x.id===id});if(!l)return;var b=getBonForLoc(id),d=legacyBonData(b),f=d.form||{},m=d.meteo||{},locked=bonIsSigned(b);BON_PHOTOS=b&&b.photos?b.photos:[];renderMulti("bonSols",BON_SOLS,"bon-sol");renderMulti("bonAncrages",BON_ANCRAGES,"bon-ancrage");renderMulti("bonProtectionDirs",BON_DIRS,"bon-protdir");var structs=(l.structures||[]).map(function(sid){var st=STRUCTS.find(function(x){return x.id===sid});return st||{id:sid,nom:sid}});document.getElementById("bonStructure").innerHTML="<option value=''>Choisir…</option>"+structs.map(function(st){return "<option value='"+escLoc(st.id)+"'>"+escLoc(st.nom)+"</option>"}).join("");document.getElementById("bonDateMontage").value=f.date||l.date||tod();document.getElementById("bonHeureMontage").value=f.heure||l.heureInstall||"";document.getElementById("bonLieu").value=f.lieu||l.adresse||"";document.getElementById("bonLieuType").value=f.lieuType||"";document.getElementById("bonStructure").value=f.structureId||(structs.length===1?structs[0].id:"");setMulti("bon-sol",f.sols);setMulti("bon-ancrage",f.ancrages);document.getElementById("bonSolAutre").value=f.solAutre||"";document.getElementById("bonSolAutre").style.display=(f.sols||[]).indexOf("Autre")>=0?"block":"none";document.getElementById("bonAncrageAutre").value=f.ancrageAutre||"";document.getElementById("bonAncrageAutre").style.display=(f.ancrages||[]).indexOf("Autre")>=0?"block":"none";document.querySelectorAll(".bon-sol,.bon-ancrage").forEach(function(x){x.onchange=function(){document.getElementById("bonSolAutre").style.display=getMulti("bon-sol").indexOf("Autre")>=0?"block":"none";document.getElementById("bonAncrageAutre").style.display=getMulti("bon-ancrage").indexOf("Autre")>=0?"block":"none";}});["FixNec","FixInst","Lests","UsersTotal","Capacite","Age","Poids","Taille"].forEach(function(k){document.getElementById("bon"+k).value=f[k.charAt(0).toLowerCase()+k.slice(1)]||""});if(!locked&&!b){var total=0,missing=[],ages=[];structs.forEach(function(st){if(Number.isFinite(Number(st.capacite))&&Number(st.capacite)>0)total+=Number(st.capacite);else missing.push(st.nom+" : capacité");if(st.ageMin!=null&&st.ageMax!=null)ages.push(st.nom+" : "+st.ageMin+" à "+st.ageMax+" ans");else missing.push(st.nom+" : âges");});if(total&&!f.capacite)document.getElementById("bonCapacite").value=total;if(ages.length&&!f.age)document.getElementById("bonAge").value=ages.join(" ; ");var warning=document.getElementById("bonStructureInfo");if(warning)warning.textContent=(structs.length>1?"Capacité cumulée : "+total+" personnes. Vérifier les limites propres à chaque structure. ":"")+(missing.length?"Informations manquantes : "+missing.join(", "):"");}document.getElementById("bonPluie").value=m.pluie||"";document.getElementById("bonVentNA").value=m.ventMode||((f.lieuType==="interieur"&&!m.vent)?"na":"mesure");document.getElementById("bonVent").value=m.vent==null?"":m.vent;document.getElementById("bonVentDir").value=m.ventDir||"";document.getElementById("bonRafales").value=m.rafales||"";document.getElementById("bonRafalesVitesse").value=m.rafalesVitesse==null?"":m.rafalesVitesse;document.getElementById("bonVigilance").value=m.vigilance||"";document.getElementById("bonVigilanceDetail").value=m.vigilanceDetail||"";document.getElementById("bonProtection").value=m.protection||"";setMulti("bon-protdir",m.protectionDirs);document.getElementById("bonProtectionDesc").value=m.protectionDesc||"";toggleBonVentNA();toggleBonProtection();renderBonChecks(d.installation);renderBonValidations(d.validations);fillEmpSelect("bonInstallateur",b&&b.agent?b.agent:l.responsable);document.getElementById("bonSignataire").value=b&&b.signataire?b.signataire:l.client;document.getElementById("bonObs").value=b?b.observations||"":"";document.getElementById("bonValidation").checked=locked;renderBonPhotos();document.getElementById("locBonLocked").innerHTML=locked?"<div class='loc-locked'>🔒 Bon signé : cette version est figée.</div><button class='cnclbtn' onclick=\"newLocationBonVersion('"+id+"')\">Créer une nouvelle version</button>":b?"<div style='background:#fff8e1;padding:9px;border-radius:8px;font-size:11px;font-weight:700'>💾 Brouillon enregistré — non signé.</div>":"";document.querySelectorAll("#mLocationBon input,#mLocationBon select,#mLocationBon textarea").forEach(function(x){if(x.id!=="bonPhotosPreview")x.disabled=locked});document.getElementById("saveBonBtn").style.display=locked?"none":"block";document.getElementById("draftBonBtn").style.display=locked?"none":"block";openModal("mLocationBon");setTimeout(function(){initLocSig();clearLocSig();if(b&&b.signature){var im=new Image();im.onload=function(){document.getElementById("locSigCanvas").getContext("2d").drawImage(im,0,0,500,140)};im.src=b.signature;}},100);}
 var LOC_SIG_DRAW=false,LOC_SIG_INIT=false;function initLocSig(){var c=document.getElementById("locSigCanvas");if(!c||LOC_SIG_INIT)return;LOC_SIG_INIT=true;var ctx=c.getContext("2d");ctx.strokeStyle="#1a4a2e";ctx.lineWidth=2;ctx.lineCap="round";function pos(e){var r=c.getBoundingClientRect(),q=e.touches?e.touches[0]:e;return{x:(q.clientX-r.left)*c.width/r.width,y:(q.clientY-r.top)*c.height/r.height}}function st(e){if(c.closest(".mo").querySelector("#saveBonBtn").style.display==="none")return;e.preventDefault();LOC_SIG_DRAW=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y)}function mv(e){if(!LOC_SIG_DRAW)return;e.preventDefault();var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke()}c.addEventListener("mousedown",st);c.addEventListener("mousemove",mv);c.addEventListener("mouseup",function(){LOC_SIG_DRAW=false});c.addEventListener("touchstart",st,{passive:false});c.addEventListener("touchmove",mv,{passive:false});c.addEventListener("touchend",function(){LOC_SIG_DRAW=false});}
 function clearLocSig(){var c=document.getElementById("locSigCanvas");if(c)c.getContext("2d").clearRect(0,0,c.width,c.height)}function getLocSig(){var c=document.getElementById("locSigCanvas"),d=c.getContext("2d").getImageData(0,0,c.width,c.height).data,ok=false;for(var i=3;i<d.length;i+=4)if(d[i]){ok=true;break}return ok?c.toDataURL("image/jpeg",.55):null;}
 function compressPhoto(file){return new Promise(function(resolve){var rd=new FileReader();rd.onload=function(){var im=new Image();im.onload=function(){var max=1000,scale=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*scale);c.height=Math.round(im.height*scale);c.getContext("2d").drawImage(im,0,0,c.width,c.height);resolve(c.toDataURL("image/jpeg",.55))};im.src=rd.result};rd.readAsDataURL(file)})}
