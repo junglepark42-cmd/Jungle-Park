@@ -3699,7 +3699,7 @@ function openEditFiche(id){
   }, 30);
 }
 
-async function saveFiche(){
+async async function saveFiche(){
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Erreur"); return; }
   s.nom      = document.getElementById("esNom").value.trim()     || s.nom;
