@@ -960,7 +960,7 @@ nale (tous les 2 ans)</option>
     <button class="ctab" onclick="switchStructTab('gonflables',this)">&#x1F3F0; Gonflables</button>
     <button class="ctab" onclick="switchStructTab('mensuel',this)">Mensuel</button>
     <button class="ctab" onclick="switchStructTab('annuel',this)">Annuel</button>
-    <button class="ctab" onclick="switchStructTab('historique',this)">&#x1F4CB; Historique</button>
+    <button class="ctab" onclick="switchStructTab('historique',this)">&#x1F4CB; Historique</button><button class="ctab" onclick="switchStructTab('fiches',this)">📋 Fiches</button>
     
   </div>
   <div id="structContent"></div>
@@ -1182,7 +1182,7 @@ nale (tous les 2 ans)</option>
     <div class="fr"><label>Annee acquisition</label><input id="esAnnee" type="number" placeholder="ex: 2022"></div>
   </div>
   <div class="fr"><label>Marque / Fabricant</label><input id="esMarque" placeholder="ex: Airquee, Berg..."></div>
-  <div class="fr"><label>Numero de serie</label><input id="esSerie" placeholder="ex: SN-2022-001"></div>
+  <div class="fg2"><div class="fr"><label>Âge minimum</label><input id="esAgeMin" type="number" min="0"></div><div class="fr"><label>Âge maximum</label><input id="esAgeMax" type="number" min="0"></div></div><div class="fr"><label>Numero de serie</label><input id="esSerie" placeholder="ex: SN-2022-001"></div>
   <div class="fr"><label>Consigne de controle</label><input id="esNote" placeholder="ex: verifier coutures..."></div>
   <button class="vbtn" onclick="saveFiche()">Enregistrer la fiche</button>
   <button class="cnclbtn" onclick="closeModal('mEditStructFiche')">Annuler</button>
@@ -3506,7 +3506,7 @@ function renderStructList(tab){
     renderStructHistorique();
     return;
   } else if(tab==="fiches"){
-    renderStructFiches();
+    renderStructFiches(el);
     return;
   } else {
     list=STRUCTS;
@@ -3602,7 +3602,7 @@ function renderStructFiches(el){
       +"<div class=\"struct-hdr\">"
       +"<div style=\"flex:1\">"
       +"<div class=\"struct-name\">"+s.nom+"</div>"
-      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+CAT_NOM[s.cat]+"</div>"
+      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+(CAT_NOM[s.cat]||s.secteur||"Structure")+"</div>"
       +"<div style=\"display:flex;gap:6px;margin-top:4px;flex-wrap:wrap\">"
       +(s.capacite?"<span style=\"font-size:10px;background:#e3f2fd;color:var(--blue);padding:2px 7px;border-radius:10px;font-weight:700\">"+s.capacite+" pers.</span>":"")
       +(s.marque?"<span style=\"font-size:10px;background:#f5f5f5;padding:2px 7px;border-radius:10px\">"+s.marque+"</span>":"")
@@ -3633,12 +3633,12 @@ function openFiche(id){
       if(el) el.innerHTML = val;
     }
     set("sfNom",  s.nom);
-    set("sfCat",  CAT_NOM[s.cat]||s.cat);
+    set("sfCat",  CAT_NOM[s.cat]||s.secteur||"Structure");
     set("sfZone", s.zone || "");
     set("sfCapacite", s.capacite ? s.capacite+" personnes" : "--");
-    set("sfMarque",   s.marque  || "--");
+    set("sfMarque",   s.fabricant||s.marque|| "--");
     set("sfAnnee",    s.annee   || "--");
-    set("sfSerie",    s.serie   || "--");
+    set("sfSerie",    s.numeroSerie||s.serie|| "--");
     set("sfType",     {quotidien:"Quotidien",mensuel:"Mensuel",annuel:"Annuel"}[s.type]||s.type);
     set("sfNote",     s.note    || "--");
     var stxt = {ok:"OK / Conforme", defaut:"Defaut signale", hs:"Hors service", new:"Jamais controle"}[s.statut]||s.statut;
@@ -3673,7 +3673,7 @@ function openFiche(id){
     setH("sfHisto", hrows);
     var eb = document.getElementById("sfEditBtn");
     if(eb) eb.innerHTML = (CU && CU.role === "gerant")
-      ? "<button class=\"vbtn\" style=\"margin-bottom:8px\" onclick=\"openEditFiche('"+id+"')\">Modifier la fiche</button>" : "";
+      ? "<button class=\"vbtn\" style=\"margin-bottom:8px\" onclick=\"openEditFiche('"+id+"')\">Modifier la fiche</button><button class=\"cnclbtn\" onclick=\"openAddStructForm('"+id+"')\">Gérer / supprimer</button>" : "";
   }, 30);
 }
 
@@ -3691,15 +3691,15 @@ function openEditFiche(id){
     setVal("esCat",      s.cat);
     setVal("esType",     s.type);
     setVal("esZone",     s.zone     || "");
-    setVal("esCapacite", s.capacite || "");
+    setVal("esCapacite", s.capacite ?? "");setVal("esAgeMin",s.ageMin??"");setVal("esAgeMax",s.ageMax??"");
     setVal("esAnnee",    s.annee    || "");
-    setVal("esMarque",   s.marque   || "");
-    setVal("esSerie",    s.serie    || "");
+    setVal("esMarque",   s.fabricant||s.marque|| "");
+    setVal("esSerie",    s.numeroSerie||s.serie|| "");
     setVal("esNote",     s.note     || "");
   }, 30);
 }
 
-function saveFiche(){
+async function saveFiche(){
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Erreur"); return; }
   s.nom      = document.getElementById("esNom").value.trim()     || s.nom;
@@ -3711,8 +3711,8 @@ function saveFiche(){
   s.marque   = document.getElementById("esMarque").value.trim();
   s.serie    = document.getElementById("esSerie").value.trim();
   s.note     = document.getElementById("esNote").value.trim();
-  closeModal("mEditStructFiche");
-  openFiche(EDIT_STRUCT_ID);
+  s.ageMin=document.getElementById("esAgeMin").value===""?null:Number(document.getElementById("esAgeMin").value);s.ageMax=document.getElementById("esAgeMax").value===""?null:Number(document.getElementById("esAgeMax").value);s.fabricant=s.marque;s.numeroSerie=s.serie;var ok=await supaPatch("structures",{nom:s.nom,type:s.type,capacite:s.capacite,age_min:s.ageMin,age_max:s.ageMax,fabricant:s.fabricant,numero_serie:s.numeroSerie},"id=eq."+s.id);if(ok===null){showToast("Erreur de sauvegarde");return;}closeModal("mEditStructFiche");
+  openFiche(EDIT_STRUCT_ID);renderStructList(CURRENT_STRUCT_TAB);
   showToast("Fiche mise a jour !");
 }
 
@@ -4001,12 +4001,12 @@ async function deleteStructDirect(id){
   showToast(nom + " supprimee !");
 }
 
-function deleteStruct(){
+async function deleteStruct(){
   if(!EDIT_STRUCT_ID){ showToast("Erreur : aucune structure selectionnee"); return; }
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Structure introuvable"); return; }
   var nom = s.nom;
-  STRUCTS = STRUCTS.filter(function(x){ return x.id !== EDIT_STRUCT_ID; });
+  if(!confirm("Supprimer définitivement "+nom+" ? Les anciens contrôles et locations peuvent encore y faire référence."))return;var ok=await supa("structures","DELETE",null,"id=eq."+EDIT_STRUCT_ID);if(ok===null){showToast("Suppression impossible");return;}STRUCTS = STRUCTS.filter(function(x){ return x.id !== EDIT_STRUCT_ID; });
   EDIT_STRUCT_ID = null;
   closeModal("mAddStruct");
   renderStructList(CURRENT_STRUCT_TAB);
