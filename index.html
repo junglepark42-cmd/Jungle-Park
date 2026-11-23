@@ -3596,13 +3596,13 @@ function renderStructFiches(el){
   // Show all structures as cards with key info
   var rows = STRUCTS.map(function(s){
     var sc = {ok:"ss-ok",defaut:"ss-defaut",hs:"ss-hs",new:"ss-new"}[s.statut]||"ss-new";
-    var stxt = {ok:"OK",defaut:"Defaut",hs:"Hors service",new:"Jamais controle"}[s.statut];
+    var stxt = {ok:"OK",defaut:"Defaut",hs:"Hors service",new:"Jamais controle",retire:"Retirée du parc"}[s.statut];
     var typeBadge = {quotidien:"Quotidien",mensuel:"Mensuel",annuel:"Annuel"}[s.type];
     return "<div class=\"struct-item\" onclick=\"openFiche('"+s.id+"')\">"
       +"<div class=\"struct-hdr\">"
       +"<div style=\"flex:1\">"
       +"<div class=\"struct-name\">"+s.nom+"</div>"
-      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+CAT_NOM[s.cat]+"</div>"
+      +"<div class=\"struct-cat\">"+(s.zone||"")+" | "+(CAT_NOM[s.cat]||s.secteur||"Structure")+"</div>"
       +"<div style=\"display:flex;gap:6px;margin-top:4px;flex-wrap:wrap\">"
       +(s.capacite?"<span style=\"font-size:10px;background:#e3f2fd;color:var(--blue);padding:2px 7px;border-radius:10px;font-weight:700\">"+s.capacite+" pers.</span>":"")
       +(s.marque?"<span style=\"font-size:10px;background:#f5f5f5;padding:2px 7px;border-radius:10px\">"+s.marque+"</span>":"")
@@ -3641,7 +3641,7 @@ function openFiche(id){
     set("sfSerie",    s.numeroSerie||s.serie||"--");
     set("sfType",     {quotidien:"Quotidien",mensuel:"Mensuel",annuel:"Annuel"}[s.type]||s.type);
     set("sfNote",     s.note    || "--");
-    var stxt = {ok:"OK / Conforme", defaut:"Defaut signale", hs:"Hors service", new:"Jamais controle"}[s.statut]||s.statut;
+    var stxt = {ok:"En service", defaut:"Défaut", hs:"Hors service", new:"Jamais contrôlé",retire:"Retirée du parc"}[s.statut]||s.statut;
     set("sfStatut",  stxt);
     set("sfDernier", s.lastDate  || "--");
     set("sfAgent",   s.lastAgent || "--");
@@ -3702,6 +3702,7 @@ function openEditFiche(id){
 async function saveFiche(){
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Erreur"); return; }
+  var previous=Object.assign({},s);
   s.nom      = document.getElementById("esNom").value.trim()     || s.nom;
   s.cat      = document.getElementById("esCat").value;
   s.type     = document.getElementById("esType").value;
@@ -3713,7 +3714,7 @@ async function saveFiche(){
   s.note     = document.getElementById("esNote").value.trim();
   var changes={nom:s.nom,type:s.type,capacite:s.capacite||null,age_min:document.getElementById("esAgeMin").value===""?null:Number(document.getElementById("esAgeMin").value),age_max:document.getElementById("esAgeMax").value===""?null:Number(document.getElementById("esAgeMax").value),fabricant:s.marque,numero_serie:s.serie};
   if(changes.age_min!==null&&changes.age_max!==null&&changes.age_min>changes.age_max){showToast("Âges incohérents");return;}
-  var saved=await supaPatch("structures",changes,"id=eq."+s.id);if(saved===null){showToast("Erreur de sauvegarde");return;}s.ageMin=changes.age_min;s.ageMax=changes.age_max;s.fabricant=s.marque;s.numeroSerie=s.serie;
+  var saved=await supaPatch("structures",changes,"id=eq."+s.id);if(saved===null||Array.isArray(saved)&&!saved.length){Object.assign(s,previous);showToast("Erreur de sauvegarde");return;}s.ageMin=changes.age_min;s.ageMax=changes.age_max;s.fabricant=s.marque;s.numeroSerie=s.serie;
   closeModal("mEditStructFiche");
   openFiche(EDIT_STRUCT_ID);
   showToast("Fiche mise a jour !");
@@ -3999,18 +4000,17 @@ async function deleteStructDirect(id){
   if(!s) return;
   if(!confirm("Supprimer " + s.nom + " ?")) return;
   var nom = s.nom;
-  STRUCTS = STRUCTS.filter(function(x){ return x.id !== id; });
-  await supa("structures","DELETE",null,"id=eq."+id);
+  var result=await supaPatch("structures",{statut:"retire"},"id=eq."+id);if(result===null||Array.isArray(result)&&!result.length)return;s.statut="retire";
   renderStructList(CURRENT_STRUCT_TAB);
   showToast(nom + " supprimee !");
 }
 
-function deleteStruct(){
+async function deleteStruct(){
   if(!EDIT_STRUCT_ID){ showToast("Erreur : aucune structure selectionnee"); return; }
   var s = STRUCTS.find(function(x){ return x.id === EDIT_STRUCT_ID; });
   if(!s){ showToast("Structure introuvable"); return; }
   var nom = s.nom;
-  STRUCTS = STRUCTS.filter(function(x){ return x.id !== EDIT_STRUCT_ID; });
+  var result=await supaPatch("structures",{statut:"retire"},"id=eq."+EDIT_STRUCT_ID);if(result===null||Array.isArray(result)&&!result.length){showToast("Archivage impossible");return;}s.statut="retire";
   EDIT_STRUCT_ID = null;
   closeModal("mAddStruct");
   renderStructList(CURRENT_STRUCT_TAB);
