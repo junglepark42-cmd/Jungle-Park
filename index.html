@@ -1219,7 +1219,7 @@ nale (tous les 2 ans)</option>
     <button class="ctab" onclick="switchLivTab('all',this)">Tout</button>
     <button class="ctab" onclick="switchLivTab('anomalies',this)">&#x26A0; Anomalies</button>
   </div>
-  <div id="livraisonsContent"></div>
+  <button class="vbtn" onclick="openSurgeles()">❄️ Suivi des surgelés</button><div id="livraisonsContent"></div>
   <button class="cnclbtn" style="margin-top:10px" onclick="closeModal('mLivraisons')">Fermer</button>
 </div></div>
 
@@ -1243,7 +1243,7 @@ nale (tous les 2 ans)</option>
     <button id="livbtn-surgele" onclick="toggleLivType('surgele')" style="padding:12px;border-radius:8px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;font-family:Nunito,sans-serif;font-weight:700;font-size:13px" class="livtype-btn">🧊 Surgele</button>
     <button id="livbtn-autre"   onclick="toggleLivType('autre')"   style="padding:12px;border-radius:8px;border:2px solid #e0e0e0;background:#fff;cursor:pointer;font-family:Nunito,sans-serif;font-weight:700;font-size:13px" class="livtype-btn">📋 Autre</button>
   </div>
-  <div class="fr"><label>Statut</label><select id="livAction">
+  <div id="sgReception" style="display:none;margin:12px 0"><strong>Rangement des cartons surgelés</strong><div id="sgGroups"></div><button type="button" class="btn-add" onclick="sgAdd()">+ Congélateur</button><button type="button" class="btn-add" onclick="sgReserve()">Attribuer les numéros</button><div id="sgNumbers"></div></div><div class="fr"><label>Statut</label><select id="livAction" onchange="selectLivStatut(this.value);sgVisibility()">
     <option value="ok">✅ Conforme</option>
     <option value="reserve">⚠️ Accepte sous reserve</option>
     <option value="refuse">❌ Refuse</option>
@@ -1255,7 +1255,7 @@ nale (tous les 2 ans)</option>
   <button class="vbtn" onclick="saveLivraison()">Enregistrer la livraison</button>
   <button class="cnclbtn" onclick="closeModal('mNewLivraison')">Annuler</button>
 </div></div>
-<div class="mo" id="mAnniversaires" onclick="if(event.target===this)closeModal('mAnniversaires')"><div class="ms" style="max-height:94vh;overflow-y:auto">
+<div class="mo" id="mSurgeles"><div class="ms" style="max-height:94vh;overflow:auto"><div class="mtitle">❄️ Suivi des surgelés</div><button class="btn-add" onclick="sgBoard(false)">Stock actif</button> <button class="btn-add" onclick="sgBoard(true)">Historique</button><div id="sgBoard"></div><button class="cnclbtn" onclick="closeModal('mSurgeles')">Fermer</button></div></div><div class="mo" id="mAnniversaires" onclick="if(event.target===this)closeModal('mAnniversaires')"><div class="ms" style="max-height:94vh;overflow-y:auto">
   <div class="mh"></div>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
     <div class="mtitle" style="margin:0">&#x1F382; Anniversaires</div>
@@ -4245,6 +4245,17 @@ function saveSaisonsConfig(){
   showToast("Configuration des saisons enregistree !");
 }
 
+var SG_ID=null,SG_RESERVED=[],SG_BUSY=false;
+var SG_FREEZERS=[["eq_1775047466237","Congélateur Cheeky"],["eq_1775047565876","Congélateur Donuts"],["eq_1775047660548","Congélateur Glaces"],["eq_1775461677045","Congélateur sous le four"],["eq_1775375808651","Grand congélateur"]];
+function sgEsc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(x){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]});}
+function sgReset(){SG_ID=null;SG_RESERVED=[];document.getElementById("sgGroups").innerHTML="";document.getElementById("sgNumbers").textContent="";document.getElementById("sgReception").style.display="none";}
+function sgVisibility(){document.getElementById("sgReception").style.display=LIV_TYPES_SEL.surgele&&!EDIT_LIV_ID&&document.getElementById("livAction").value!=="refuse"?"block":"none";}
+function sgAdd(){if(SG_ID||SG_BUSY)return;var d=document.createElement("div");d.style.cssText="display:flex;gap:8px;margin:8px 0";d.innerHTML='<select aria-label="Congélateur">'+SG_FREEZERS.map(function(f){return '<option value="'+f[0]+'">'+sgEsc(f[1])+'</option>'}).join("")+'</select><input aria-label="Quantité" type="number" min="1" max="600" value="1" style="width:65px"><button type="button" onclick="this.parentNode.remove()">×</button>';document.getElementById("sgGroups").appendChild(d);}
+async function sgReserve(){if(SG_BUSY)return;var rows=Array.from(document.getElementById("sgGroups").children);if(!rows.length){showToast("Ajouter un congélateur");return;}var groups=rows.map(function(d){return {id:d.querySelector("select").value,q:Number(d.querySelector("input").value)}});if(new Set(groups.map(function(g){return g.id})).size!==groups.length||groups.some(function(g){return !Number.isInteger(g.q)||g.q<1||g.q>600})){showToast("Quantités ou congélateurs invalides");return;}SG_BUSY=true;SG_ID=SG_ID||crypto.randomUUID();rows.forEach(function(d){d.querySelectorAll("input,select,button").forEach(function(e){e.disabled=true})});try{var all=[];for(var g of groups){var res=await supaPost("rpc/surgeles_reserver",{p_reservation:SG_ID,p_equipement:g.id,p_quantite:g.q,p_agent:document.getElementById("livAgent").value});if(!Array.isArray(res)||res.length!==g.q){showToast("Réservation impossible — réessayer");return;}all=all.concat(res);}SG_RESERVED=all;document.getElementById("sgNumbers").innerHTML=all.map(function(x){return '<span style="display:inline-block;padding:8px;margin:3px;background:#e1f5fe;border-radius:6px">N'+x.numero+'</span>'}).join("");}finally{SG_BUSY=false;}}
+function openSurgeles(){openModal("mSurgeles");sgBoard(false);}
+async function sgBoard(history){var el=document.getElementById("sgBoard");el.textContent="Chargement…";var data=await supaGet("surgeles_cartons","select=*,livraisons(fournisseur,bl)&parc=eq.jungle&statut="+(history?"eq.termine":"eq.actif")+"&order=reception.asc");if(!Array.isArray(data)){el.textContent="Suivi indisponible";return;}el.innerHTML=SG_FREEZERS.map(function(f){return "<h3>"+sgEsc(f[1])+"</h3>"+data.filter(function(x){return x.equipement_id===f[0]}).map(function(x){var l=x.livraisons||{},n=String(l.fournisseur||"").toLowerCase(),bg=n.includes("sysco")?"#dbeafe":n.includes("distram")?"#ffedd5":n.includes("promocash")?"#dcfce7":"#eee";return '<div style="padding:10px;margin:5px 0;border-radius:8px;background:'+bg+';color:#222"><strong>N'+x.numero+'</strong> '+sgEsc(l.fournisseur)+' · '+sgEsc(x.reception)+' · BL '+sgEsc(l.bl)+(history?'':' <button onclick="sgFinish(\''+x.id+'\')">Terminé</button> <button onclick="sgMove(\''+x.id+'\')">Déplacer</button>')+'</div>'}).join("")}).join("");}
+async function sgFinish(id){if(!confirm("Carton terminé ?"))return;var r=await supaPost("rpc/surgeles_sortir",{p_carton:id,p_agent:CU.name});if(r)sgBoard(false);}
+async function sgMove(id){var n=prompt(SG_FREEZERS.map(function(f,i){return (i+1)+" : "+f[1]}).join("\n"));if(!SG_FREEZERS[Number(n)-1])return;var r=await supaPost("rpc/surgeles_deplacer",{p_carton:id,p_equipement:SG_FREEZERS[Number(n)-1][0],p_agent:CU.name});if(r)sgBoard(false);}
 var LIVRAISONS = [];
 var LIV_TYPES_SEL = {sec:false,frais:false,surgele:false,autre:false};
 var EDIT_LIV_ID = null;
@@ -4341,6 +4352,7 @@ function renderLivraisons(tab){
   }).join("");
 }
 function openNewLivraison(){
+  sgReset();
   EDIT_LIV_ID=null;
   (function(){var _e=document.getElementById("mNewLivraisonTitle");if(_e)_e.textContent="Nouvelle livraison";})();
   ["livFourn","livBL","livAnomalie","livProduits","livNote"].forEach(function(id){var e=document.getElementById(id);if(e)e.value="";});
@@ -4360,6 +4372,7 @@ function openNewLivraison(){
 }
 function toggleLivType(t){
   LIV_TYPES_SEL[t]=!LIV_TYPES_SEL[t];
+  sgVisibility();
   var btn=document.getElementById("livbtn-"+t);
   var TCOLS={sec:"#795548",frais:"var(--blue)",surgele:"#0288d1",autre:"var(--tm)"};
   var TBGS ={sec:"#efebe9",frais:"#e3f2fd",  surgele:"#e1f5fe",  autre:"#f5f5f5"};
@@ -4397,7 +4410,7 @@ document.addEventListener("input",function(e){
     if(st2)st2.innerHTML=isNaN(v2)?"":"<span style=\"color:"+(ok2?"var(--g2)":"var(--red)")+";font-weight:800\">"+(ok2?"OK Conforme":"HORS ZONE (cible < -18°C)")+"</span>";
   }
 });
-function saveLivraison(){
+async function saveLivraison(){
   var fourn=document.getElementById("livFourn").value.trim(); if(!fourn){showToast("Fournisseur obligatoire");return;}
   var agent=document.getElementById("livAgent").value;        if(!agent){showToast("Agent obligatoire");return;}
   if(!Object.values(LIV_TYPES_SEL).some(function(v){return v;})){showToast("Selectionner au moins un type de produit");return;}
@@ -4412,6 +4425,14 @@ function saveLivraison(){
     produits:document.getElementById("livProduits").value.trim(),
     note:document.getElementById("livNote").value.trim(),
     savedAt:new Date().toISOString()};
+  if(!EDIT_LIV_ID && liv.types.surgele && liv.statut!=="refuse"){
+    if(!SG_RESERVED.length){showToast("Attribuer les numéros des cartons avant validation");return;}
+    if(SG_BUSY)return; SG_BUSY=true;
+    try{var result=await supaPost("rpc/surgeles_valider",{p_reservation:SG_ID,p_livraison:{id:liv.id,fournisseur:liv.fourn,date:liv.date,heure:liv.heure,agent:liv.agent,bl:liv.bl,types:liv.types,statut:liv.statut,anomalie:liv.anomalie,action:liv.action,produits:liv.produits,note:liv.note}});
+    if(!result){showToast("Validation impossible — réessayer");return;}
+    LIVRAISONS.unshift(liv);saveFournisseurIfNew(fourn);sgReset();closeModal("mNewLivraison");renderLivraisons(CURRENT_LIV_TAB);showToast("Livraison et cartons enregistrés");return;
+    }finally{SG_BUSY=false;}
+  }
   saveFournisseurIfNew(fourn);
   if(EDIT_LIV_ID){var idx=LIVRAISONS.findIndex(function(l){return l.id===EDIT_LIV_ID;});if(idx>=0)LIVRAISONS[idx]=liv;dbUpdateLivraison(liv);showToast("Livraison mise a jour !");}
   else{LIVRAISONS.unshift(liv);dbSaveLivraison(liv);showToast("Livraison enregistree !");}
