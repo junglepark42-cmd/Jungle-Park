@@ -2169,6 +2169,11 @@ async function doLogin(){
   if(!emp){showLoginError("Salarié introuvable");return;}
   CU={id:id,name:emp.name,role:emp.mgr?"gerant":"employe"};
   try{await rhLogin(id,pin);}catch(err){CU=null;showLoginError(err.message);return;}
+  try{localStorage.setItem("jp_session_v1",RH.token);}catch(e){}
+  jpEnterApp();
+}
+function jpEnterApp(){
+  document.getElementById("nav-rh").style.display=CU.role==="gerant"?"":"none";
   document.getElementById("loginScreen").style.display="none";
   document.getElementById("app").style.display="flex";
   document.getElementById("fab").style.display="flex";
@@ -2200,6 +2205,7 @@ function showLoginError(msg){
   setTimeout(function(){el.textContent="";},3000);
 }
 function doLogout(){
+  try{localStorage.removeItem("jp_session_v1");}catch(e){}
   rhLogout();
   document.getElementById("loginScreen").style.display="flex";
   document.getElementById("app").style.display="none";
@@ -9508,5 +9514,9 @@ buildLS();
 <button class="cnclbtn" onclick="closeModal('mExportRH')">Annuler</button>
 </div></div>
 <script src="rh-contracts.js?v=20261102-1"></script>
+<script>
+async function jpRestoreSession(){var token;try{token=localStorage.getItem("jp_session_v1");}catch(e){return;}if(!token||CU)return;try{var r=await supaPost("rpc/jp_restore_session",{p_token:token});if(!r||!r.id){if(r!==null)localStorage.removeItem("jp_session_v1");return;}if(CU)return;CU={id:r.id,name:r.name,role:r.manager?"gerant":"employe"};RH.token=token;await rhLoad();jpEnterApp();}catch(e){CU=null;RH.token=null;}}
+window.addEventListener("load",jpRestoreSession);
+</script>
 </body>
 </html>
